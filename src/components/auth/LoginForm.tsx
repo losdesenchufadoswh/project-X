@@ -35,8 +35,10 @@ export function LoginForm() {
 
       router.push("/admin/dashboard");
       router.refresh();
-    } catch {
-      setError("Email o contraseña incorrectos.");
+    } catch (err) {
+      // TODO: revertir a mensaje genérico una vez diagnosticado el login en producción
+      const code = err instanceof Error ? err.message : String(err);
+      setError(`Error de login: ${code}`);
     } finally {
       setLoading(false);
     }
