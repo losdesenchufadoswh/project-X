@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  /* Design system — Project X */
+  --color-background: #0a0a0f;
+  --color-surface: #0e0e1a;
+  --color-primary: #7c3aed;
+  --color-success: #16a34a;
+  --color-warning: #ea580c;
+  --color-danger: #dc2626;
+  --color-foreground: #e8e8f0;
+  --color-muted: #6b6b8a;
+
+  --font-heading: var(--font-cinzel), serif;
+  --font-data: var(--font-orbitron), monospace;
+  --font-sans: var(--font-inter), sans-serif;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
