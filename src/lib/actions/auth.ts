@@ -32,8 +32,10 @@ export async function createSessionAction(idToken: string): Promise<AuthResult> 
     });
 
     return { success: true };
-  } catch {
-    return { success: false, error: "No se pudo crear la sesión. Intenta de nuevo." };
+  } catch (err) {
+    // TODO: revertir a mensaje genérico una vez diagnosticado el login en producción
+    const detail = err instanceof Error ? err.message : String(err);
+    return { success: false, error: `No se pudo crear la sesión: ${detail}` };
   }
 }
 
