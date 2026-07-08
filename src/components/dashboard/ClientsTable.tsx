@@ -7,8 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { ExecuteButton } from "./ExecuteButton";
+import { NewCustomerButton } from "./NewCustomerButton";
 import { UpsellSuggestion } from "./UpsellSuggestion";
 import { formatMoney } from "@/lib/utils";
+import type { Plan } from "@/types/plan";
 
 export interface DashboardRow {
   id: string;
@@ -26,7 +28,7 @@ export interface DashboardRow {
   } | null;
 }
 
-export function ClientsTable({ rows }: { rows: DashboardRow[] }) {
+export function ClientsTable({ rows, plans }: { rows: DashboardRow[]; plans: Plan[] }) {
   const [search, setSearch] = useState("");
 
   const filtered = useMemo(() => {
@@ -42,14 +44,17 @@ export function ClientsTable({ rows }: { rows: DashboardRow[] }) {
 
   return (
     <div className="space-y-4">
-      <div className="relative max-w-sm">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-        <Input
-          placeholder="Buscar cliente..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="relative max-w-sm flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+          <Input
+            placeholder="Buscar cliente..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <NewCustomerButton plans={plans} />
       </div>
 
       <Table>

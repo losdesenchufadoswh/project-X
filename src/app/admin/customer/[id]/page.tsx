@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { BundleComparison } from "@/components/customer/BundleComparison";
 import { CurrentPlan } from "@/components/customer/CurrentPlan";
+import { EditCustomerButton } from "@/components/customer/EditCustomerButton";
 import { SavingsCalculator } from "@/components/customer/SavingsCalculator";
 import { ExecuteButton } from "@/components/dashboard/ExecuteButton";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +61,7 @@ export default async function CustomerDetailPage({
             </p>
           )}
         </div>
+        <EditCustomerButton customer={customer} />
       </div>
 
       {!currentPlan && (

@@ -3,6 +3,7 @@ import { listCustomers } from "@/lib/db/customers";
 import { listPlans } from "@/lib/db/plans";
 import { findBestUpsell } from "@/lib/pricing/bundles";
 import { calculateSavings, calculateValueAdd } from "@/lib/pricing/calculator";
+import { formatMoney } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,10 @@ export default async function DashboardPage() {
   });
 
   const withSuggestion = rows.filter((r) => r.suggestion !== null).length;
+  const totalMonthlyOpportunity = rows.reduce(
+    (sum, row) => sum + Math.max(row.suggestion?.savings ?? 0, 0),
+    0
+  );
 
   return (
     <div className="space-y-6">
@@ -44,10 +49,18 @@ export default async function DashboardPage() {
         <p className="mt-1 text-sm text-muted">
           {rows.length} cliente{rows.length !== 1 ? "s" : ""} ·{" "}
           <span className="text-success">{withSuggestion} con oportunidad de upsell</span>
+          {totalMonthlyOpportunity > 0 && (
+            <>
+              {" "}
+              · <span className="text-primary">
+                {formatMoney(totalMonthlyOpportunity)}/mes en ahorro disponible
+              </span>
+            </>
+          )}
         </p>
       </div>
 
-      <ClientsTable rows={rows} />
+      <ClientsTable rows={rows} plans={plans} />
     </div>
   );
 }

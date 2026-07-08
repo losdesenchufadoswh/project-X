@@ -17,3 +17,9 @@ export async function getCustomer(id: string): Promise<Customer | null> {
 export async function updateCustomer(id: string, data: Partial<Omit<Customer, "id">>): Promise<void> {
   await adminDb().collection(COLLECTION).doc(id).update(data);
 }
+
+export async function createCustomer(data: Omit<Customer, "id">): Promise<string> {
+  const ref = adminDb().collection(COLLECTION).doc();
+  await ref.set(data);
+  return ref.id;
+}
