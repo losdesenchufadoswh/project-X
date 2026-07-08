@@ -22,8 +22,12 @@ export interface NewCustomerInput {
   email: string;
   phone: string;
   type: CustomerType;
-  currentPlanId: string;
-  pricePayingNow: number;
+  /** Velocidad que el prospecto tiene HOY con otro proveedor (Mbps) — solo para calcular la recomendación */
+  competitorSpeedMbps: number;
+  /** Precio que el prospecto paga HOY con otro proveedor — solo para calcular la recomendación */
+  competitorPrice: number;
+  /** El plan NUESTRO que se le va a asignar (normalmente el recomendado, pero editable) */
+  assignedPlanId: string;
   notes: string;
 }
 
@@ -33,26 +37,29 @@ export async function createCustomerAction(input: NewCustomerInput): Promise<Act
   if (!input.name.trim() || !input.email.trim()) {
     return { success: false, error: "Nombre y email son requeridos." };
   }
-  if (input.pricePayingNow <= 0) {
-    return { success: false, error: "El precio debe ser mayor que 0." };
-  }
 
-  const plan = await getPlan(input.currentPlanId);
+  const plan = await getPlan(input.assignedPlanId);
   if (!plan) {
-    return { success: false, error: "Selecciona un plan válido." };
+    return { success: false, error: "Selecciona el plan que le vamos a asignar." };
   }
 
   const now = new Date().toISOString();
+  const conversionNote =
+    input.competitorSpeedMbps > 0 && input.competitorPrice > 0
+      ? `Antes pagaba $${input.competitorPrice.toFixed(2)} por ${input.competitorSpeedMbps} Mbps con otro proveedor.`
+      : "";
+  const notes = [conversionNote, input.notes.trim()].filter(Boolean).join(" ");
+
   await createCustomer({
     name: input.name.trim(),
     phone: input.phone.trim(),
     email: input.email.trim(),
     type: input.type,
-    current_plan_id: input.currentPlanId,
-    price_paying_now: input.pricePayingNow,
+    current_plan_id: plan.id,
+    price_paying_now: plan.promo_price_2025,
     signup_date: now,
     last_plan_change: null,
-    notes: input.notes.trim(),
+    notes,
     created_at: now,
     updated_at: now,
   });
