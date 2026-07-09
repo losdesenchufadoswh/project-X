@@ -35,6 +35,7 @@ export default async function DashboardPage() {
       town: customer.town ?? "",
       services: planToServiceFlags(currentPlan),
       lastCall: customer.last_call ?? null,
+      isProspect: !customer.current_plan_id,
       planName: currentPlan?.name ?? "Plan desconocido",
       priceNow: customer.price_paying_now,
       suggestion:
@@ -61,7 +62,7 @@ export default async function DashboardPage() {
   const monthLabel = new Date().toLocaleDateString("es-PR", { month: "long", year: "numeric" });
 
   const sales: MonthSaleItem[] = customers
-    .filter((c) => (c.signup_date ?? "").slice(0, 7) === monthKey)
+    .filter((c) => c.current_plan_id && (c.signup_date ?? "").slice(0, 7) === monthKey)
     .sort((a, b) => b.signup_date.localeCompare(a.signup_date))
     .map((c) => ({
       id: c.id,
@@ -110,7 +111,7 @@ export default async function DashboardPage() {
           stats={{
             total: rows.length,
             withUpsell: withSuggestion,
-            optimized: rows.length - withSuggestion,
+            optimized: rows.filter((r) => !r.isProspect && !r.suggestion).length,
             withTv: rows.filter((r) => r.services.tv).length,
           }}
         />

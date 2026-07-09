@@ -42,16 +42,21 @@ export async function createCustomerAction(input: NewCustomerInput): Promise<Act
     return { success: false, error: "Nombre y email son requeridos." };
   }
 
-  const plan = await getPlan(input.assignedPlanId);
-  if (!plan) {
-    return { success: false, error: "Selecciona el plan que le vamos a asignar." };
+  // Plan opcional: si viene vacío el cliente nace como prospecto (sin plan, no cuenta como venta)
+  let planId = "";
+  let price = 0;
+  if (input.assignedPlanId) {
+    const plan = await getPlan(input.assignedPlanId);
+    if (!plan) return { success: false, error: "Selecciona un plan válido." };
+    planId = plan.id;
+    price = plan.promo_price_2025;
   }
 
   const now = new Date().toISOString();
 
   // Todas las notas nacen fechadas en la bitácora
   const noteEntries: CustomerNote[] = [];
-  if (input.competitorSpeedMbps > 0 && input.competitorPrice > 0) {
+  if (planId && input.competitorSpeedMbps > 0 && input.competitorPrice > 0) {
     noteEntries.push({
       text: `Antes pagaba $${input.competitorPrice.toFixed(2)} por ${input.competitorSpeedMbps} Mbps con otro proveedor.`,
       created_at: now,
@@ -66,8 +71,8 @@ export async function createCustomerAction(input: NewCustomerInput): Promise<Act
     phone: input.phone.trim(),
     email: input.email.trim(),
     type: input.type,
-    current_plan_id: plan.id,
-    price_paying_now: plan.promo_price_2025,
+    current_plan_id: planId,
+    price_paying_now: price,
     signup_date: now,
     last_plan_change: null,
     town: input.town.trim(),
@@ -81,6 +86,37 @@ export async function createCustomerAction(input: NewCustomerInput): Promise<Act
   });
 
   revalidatePath("/admin/dashboard");
+  return { success: true };
+}
+
+/** Asigna el primer plan a un prospecto (lo convierte en venta). No pasa por upsell_log
+ *  porque no es un cambio de plan, es la venta inicial — queda en la bitácora fechado. */
+export async function assignPlanAction(customerId: string, planId: string): Promise<ActionResult> {
+  if (!(await requireAdminSession())) return { success: false, error: "No autorizado." };
+
+  const [customer, plan] = await Promise.all([getCustomer(customerId), getPlan(planId)]);
+  if (!customer) return { success: false, error: "Cliente no encontrado." };
+  if (!plan) return { success: false, error: "Plan no encontrado." };
+  if (customer.current_plan_id) {
+    return { success: false, error: "El cliente ya tiene plan. Usa la sugerencia de upsell." };
+  }
+
+  const now = new Date().toISOString();
+  const entry: CustomerNote = {
+    text: `✅ Venta cerrada: ${plan.name} ($${plan.promo_price_2025.toFixed(2)}/mes)`,
+    created_at: now,
+  };
+
+  await updateCustomer(customerId, {
+    current_plan_id: plan.id,
+    price_paying_now: plan.promo_price_2025,
+    last_plan_change: now,
+    notes_log: [...(customer.notes_log ?? []), entry],
+    updated_at: now,
+  });
+
+  revalidatePath("/admin/dashboard");
+  revalidatePath(`/admin/customer/${customerId}`);
   return { success: true };
 }
 

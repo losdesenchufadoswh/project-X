@@ -23,6 +23,7 @@ export interface DashboardRow {
   town: string;
   services: ServiceFlags;
   lastCall: LastCall | null;
+  isProspect: boolean;
   planName: string;
   priceNow: number;
   suggestion: {
@@ -36,7 +37,7 @@ export interface DashboardRow {
 
 type TypeFilter = "all" | "B2C" | "B2B";
 type ServiceFilter = "all" | "tv" | "phone" | "internet_only";
-type OpportunityFilter = "all" | "with_upsell" | "optimized";
+type OpportunityFilter = "all" | "with_upsell" | "optimized" | "prospect";
 
 const selectClassName =
   "h-10 rounded-lg border border-muted/30 bg-surface px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
@@ -64,7 +65,8 @@ export function ClientsTable({ rows, plans }: { rows: DashboardRow[]; plans: Pla
       if (serviceFilter === "phone" && !row.services.phone) return false;
       if (serviceFilter === "internet_only" && (row.services.tv || row.services.phone)) return false;
       if (opportunityFilter === "with_upsell" && !row.suggestion) return false;
-      if (opportunityFilter === "optimized" && row.suggestion) return false;
+      if (opportunityFilter === "optimized" && (row.suggestion || row.isProspect)) return false;
+      if (opportunityFilter === "prospect" && !row.isProspect) return false;
       return true;
     });
   }, [rows, search, typeFilter, serviceFilter, opportunityFilter]);
@@ -123,6 +125,7 @@ export function ClientsTable({ rows, plans }: { rows: DashboardRow[]; plans: Pla
           <option value="all">Toda oportunidad</option>
           <option value="with_upsell">Con upsell</option>
           <option value="optimized">Optimizados</option>
+          <option value="prospect">Prospectos</option>
         </select>
         {activeFilters > 0 && (
           <button
@@ -187,8 +190,14 @@ export function ClientsTable({ rows, plans }: { rows: DashboardRow[]; plans: Pla
               <TD>
                 <CallStatusButtons customerId={row.id} lastCall={row.lastCall} />
               </TD>
-              <TD>{row.planName}</TD>
-              <TD className="font-data">{formatMoney(row.priceNow)}</TD>
+              <TD>
+                {row.isProspect ? (
+                  <Badge variant="warning">Prospecto</Badge>
+                ) : (
+                  row.planName
+                )}
+              </TD>
+              <TD className="font-data">{row.isProspect ? "—" : formatMoney(row.priceNow)}</TD>
               <TD>
                 {row.suggestion ? (
                   <UpsellSuggestion

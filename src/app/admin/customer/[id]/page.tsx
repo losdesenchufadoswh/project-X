@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CalendarCheck, KeyRound, MapPin, PhoneCall } from "lucide-react";
+import { AssignPlanButton } from "@/components/customer/AssignPlanButton";
 import { CallStatusButtons } from "@/components/customer/CallStatusButtons";
 import { CurrentPlan } from "@/components/customer/CurrentPlan";
 import { CustomerNotes } from "@/components/customer/CustomerNotes";
@@ -48,6 +49,7 @@ export default async function CustomerDetailPage({
             <Badge variant={customer.type === "B2B" ? "warning" : "primary"}>
               {customer.type}
             </Badge>
+            {!customer.current_plan_id && <Badge variant="warning">Prospecto</Badge>}
           </div>
           <p className="mt-1 text-sm text-muted">
             {customer.email} · {customer.phone}
@@ -116,7 +118,22 @@ export default async function CustomerDetailPage({
         legacyNote={customer.notes ?? ""}
       />
 
-      {!currentPlan && (
+      {/* Prospecto sin plan: ofrecer cerrar la venta asignándole uno */}
+      {!currentPlan && !customer.current_plan_id && (
+        <div className="hud-panel flex flex-col items-start gap-3 p-6">
+          <div>
+            <p className="font-heading text-lg font-bold text-foreground">Prospecto sin plan</p>
+            <p className="mt-1 text-sm text-muted">
+              Este cliente todavía no tiene plan asignado y no cuenta como venta. Cuando cierres,
+              asígnale un plan aquí.
+            </p>
+          </div>
+          <AssignPlanButton customerId={customer.id} customerName={customer.name} plans={plans} />
+        </div>
+      )}
+
+      {/* Plan asignado pero inexistente en el catálogo: problema de datos */}
+      {!currentPlan && customer.current_plan_id && (
         <p className="rounded-lg border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
           El plan asignado ({customer.current_plan_id}) no existe en el catálogo. Revisa la
           colección <code>plans</code>.
