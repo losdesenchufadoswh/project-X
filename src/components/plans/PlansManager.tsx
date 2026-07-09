@@ -24,6 +24,7 @@ const emptyForm: PlanInput = {
   discountCode: "",
   bundleCode: "",
   tier: 1,
+  isSpecialty: false,
 };
 
 function planToInput(plan: Plan): PlanInput {
@@ -42,13 +43,14 @@ function planToInput(plan: Plan): PlanInput {
     discountCode: plan.discount_code,
     bundleCode: plan.bundle_code,
     tier: plan.tier,
+    isSpecialty: plan.is_specialty,
   };
 }
 
 const bundleTypeLabels: Record<Plan["bundle_type"], string> = {
   internet_only: "Internet",
-  internet_cable: "Internet + Cable",
-  triple_play: "Triple Play",
+  internet_phone: "2P (Internet + Tel.)",
+  triple_play: "3P (Internet + TV + Tel.)",
 };
 
 export function PlansManager({ plans }: { plans: Plan[] }) {
@@ -148,9 +150,12 @@ export function PlansManager({ plans }: { plans: Plan[] }) {
                   <p className="text-xs text-muted">{plan.id}</p>
                 </TD>
                 <TD>
-                  <Badge variant={plan.is_bundle ? "primary" : "default"}>
-                    {bundleTypeLabels[plan.bundle_type]}
-                  </Badge>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant={plan.is_bundle ? "primary" : "default"}>
+                      {bundleTypeLabels[plan.bundle_type]}
+                    </Badge>
+                    {plan.is_specialty && <Badge variant="warning">Specialty</Badge>}
+                  </div>
                 </TD>
                 <TD className="text-sm text-muted">
                   {[
@@ -262,6 +267,16 @@ export function PlansManager({ plans }: { plans: Plan[] }) {
               </label>
             </div>
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input
+              type="checkbox"
+              checked={form.isSpecialty}
+              onChange={(e) => set("isSpecialty", e.target.checked)}
+              className="h-4 w-4 accent-[#7c3aed]"
+            />
+            Plan specialty (ej. Ultimate) — no se ofrece como &quot;MAX&quot; automático
+          </label>
 
           <div className="grid grid-cols-2 gap-3">
             <div>

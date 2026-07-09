@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } f
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { createCustomerAction, type NewCustomerInput } from "@/lib/actions/customers";
-import { COMPETITOR_SPEED_OPTIONS_MBPS, describePlan, recommendPlanForProspect } from "@/lib/pricing/prospects";
+import { COMPETITOR_SPEED_OPTIONS_MBPS, describePlan, findProspectOptions } from "@/lib/pricing/prospects";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,10 @@ const emptyForm: NewCustomerInput = {
   notes: "",
 };
 
+function speedLabel(mbps: number): string {
+  return mbps >= 1000 ? "1 Gig" : `${mbps} Mbps`;
+}
+
 export function NewCustomerButton({ plans }: { plans: Plan[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -33,29 +37,34 @@ export function NewCustomerButton({ plans }: { plans: Plan[] }) {
   const [form, setForm] = useState<NewCustomerInput>(emptyForm);
   const lastAutoPlanId = useRef("");
 
-  const recommendation = useMemo(
-    () => recommendPlanForProspect(form.competitorSpeedMbps, form.competitorPrice, plans),
+  const { bestSavings, maxPlan } = useMemo(
+    () => findProspectOptions(form.competitorSpeedMbps, form.competitorPrice, plans),
     [form.competitorSpeedMbps, form.competitorPrice, plans]
   );
 
-  // Auto-asigna el plan recomendado, pero deja de tocarlo en cuanto el admin elige uno manualmente.
-  // La mutación del ref vive fuera del updater: el updater debe ser puro porque
-  // React lo invoca dos veces en modo desarrollo para detectar impurezas.
+  // Auto-asigna la mejor opción de ahorro (o el MAX si no hay ahorro), pero deja de tocarlo
+  // en cuanto el admin elige uno manualmente. La mutación del ref vive fuera del updater:
+  // el updater debe ser puro porque React lo invoca dos veces en modo desarrollo.
   useEffect(() => {
-    const recommendedId = recommendation?.id ?? "";
+    const recommendedId = bestSavings?.id ?? maxPlan?.id ?? "";
     const previousAutoId = lastAutoPlanId.current;
     lastAutoPlanId.current = recommendedId;
 
     setForm((prev) =>
       prev.assignedPlanId === previousAutoId ? { ...prev, assignedPlanId: recommendedId } : prev
     );
-  }, [recommendation]);
+  }, [bestSavings, maxPlan]);
 
   function openDialog() {
     lastAutoPlanId.current = "";
     setForm(emptyForm);
     setError(null);
     setOpen(true);
+  }
+
+  function selectPlan(planId: string) {
+    lastAutoPlanId.current = planId;
+    setForm((prev) => ({ ...prev, assignedPlanId: planId }));
   }
 
   function handleSubmit(e: FormEvent) {
@@ -73,6 +82,7 @@ export function NewCustomerButton({ plans }: { plans: Plan[] }) {
   }
 
   const assignedPlan = plans.find((p) => p.id === form.assignedPlanId) ?? null;
+  const competitorLabel = `${speedLabel(form.competitorSpeedMbps)} (otro proveedor)`;
 
   return (
     <>
@@ -139,7 +149,7 @@ export function NewCustomerButton({ plans }: { plans: Plan[] }) {
                 >
                   {COMPETITOR_SPEED_OPTIONS_MBPS.map((mbps) => (
                     <option key={mbps} value={mbps}>
-                      {mbps >= 1000 ? "1 Gig" : `${mbps} Mbps`}
+                      {speedLabel(mbps)}
                     </option>
                   ))}
                 </select>
@@ -151,42 +161,69 @@ export function NewCustomerButton({ plans }: { plans: Plan[] }) {
                   min={0}
                   step="0.01"
                   value={form.competitorPrice || ""}
-                  onChange={(e) =>
-                    setForm({ ...form, competitorPrice: Number(e.target.value) })
-                  }
+                  onChange={(e) => setForm({ ...form, competitorPrice: Number(e.target.value) })}
                   placeholder="50.00"
                 />
               </div>
             </div>
 
-            {form.competitorPrice > 0 &&
-              (recommendation ? (
-                <div className="mt-3">
-                  <UpsellSuggestion
-                    fromName={`${form.competitorSpeedMbps >= 1000 ? "1 Gig" : `${form.competitorSpeedMbps} Mbps`} (otro proveedor)`}
-                    fromPrice={form.competitorPrice}
-                    toName={recommendation.name}
-                    toPrice={recommendation.promo_price_2025}
-                    savings={
-                      Math.round((form.competitorPrice - recommendation.promo_price_2025) * 100) /
-                      100
-                    }
-                    valueAdd={describePlan(recommendation)}
-                  />
-                </div>
-              ) : (
-                <p className="mt-3 text-xs text-muted">
-                  No tenemos un plan que le gane ese precio y velocidad todavía — asigna uno
-                  manualmente abajo.
+            {form.competitorPrice > 0 && !bestSavings && !maxPlan && (
+              <p className="mt-3 text-xs text-muted">
+                No tenemos un plan que le gane esa velocidad todavía — asigna uno manualmente
+                abajo.
+              </p>
+            )}
+
+            {bestSavings && (
+              <button
+                type="button"
+                onClick={() => selectPlan(bestSavings.id)}
+                className={`mt-3 w-full rounded-lg text-left transition-opacity ${form.assignedPlanId === bestSavings.id ? "" : "opacity-70 hover:opacity-100"}`}
+              >
+                <p className="mb-1 text-xs font-semibold text-success">
+                  ✓ Mejor ahorro{form.assignedPlanId === bestSavings.id ? " (seleccionado)" : ""}
                 </p>
-              ))}
+                <UpsellSuggestion
+                  fromName={competitorLabel}
+                  fromPrice={form.competitorPrice}
+                  toName={bestSavings.name}
+                  toPrice={bestSavings.promo_price_2025}
+                  savings={
+                    Math.round((form.competitorPrice - bestSavings.promo_price_2025) * 100) / 100
+                  }
+                  valueAdd={describePlan(bestSavings)}
+                />
+              </button>
+            )}
+
+            {maxPlan && (
+              <button
+                type="button"
+                onClick={() => selectPlan(maxPlan.id)}
+                className={`mt-3 w-full rounded-lg text-left transition-opacity ${form.assignedPlanId === maxPlan.id ? "" : "opacity-70 hover:opacity-100"}`}
+              >
+                <p className="mb-1 text-xs font-semibold text-primary">
+                  ⚡ El MAX{form.assignedPlanId === maxPlan.id ? " (seleccionado)" : ""}
+                </p>
+                <UpsellSuggestion
+                  fromName={competitorLabel}
+                  fromPrice={form.competitorPrice}
+                  toName={maxPlan.name}
+                  toPrice={maxPlan.promo_price_2025}
+                  savings={
+                    Math.round((form.competitorPrice - maxPlan.promo_price_2025) * 100) / 100
+                  }
+                  valueAdd={describePlan(maxPlan)}
+                />
+              </button>
+            )}
           </div>
 
           <div>
             <label className="mb-1 block text-xs text-muted">Plan a asignar</label>
             <select
               value={form.assignedPlanId}
-              onChange={(e) => setForm({ ...form, assignedPlanId: e.target.value })}
+              onChange={(e) => selectPlan(e.target.value)}
               required
               className={selectClassName}
             >
@@ -201,7 +238,11 @@ export function NewCustomerButton({ plans }: { plans: Plan[] }) {
             </select>
             {assignedPlan && (
               <p className="mt-1 text-xs text-muted">
-                Pagará <span className="font-data text-success">${assignedPlan.promo_price_2025.toFixed(2)}</span>/mes con nosotros
+                Pagará{" "}
+                <span className="font-data text-success">
+                  ${assignedPlan.promo_price_2025.toFixed(2)}
+                </span>
+                /mes con nosotros
               </p>
             )}
           </div>

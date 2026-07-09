@@ -8,31 +8,45 @@ function includedCount(plan: Plan): number {
   return plan.services.filter((s) => s.included).length;
 }
 
+/** Ordena candidatos: más servicios primero, luego más velocidad, luego menor precio */
+function rankBySavings(a: Plan, b: Plan): number {
+  const servicesDiff = includedCount(b) - includedCount(a);
+  if (servicesDiff !== 0) return servicesDiff;
+  const speedDiff = internetSpeed(b) - internetSpeed(a);
+  if (speedDiff !== 0) return speedDiff;
+  return a.promo_price_2025 - b.promo_price_2025;
+}
+
+export interface DualProspectOptions {
+  /** El más barato que ya le gana al proveedor actual en velocidad y precio */
+  bestSavings: Plan | null;
+  /** El plan más completo del catálogo estándar (excluye specialty), aunque cueste más */
+  maxPlan: Plan | null;
+}
+
 /**
  * Dado lo que un prospecto paga hoy con otro proveedor (velocidad + precio),
- * recomienda el mejor plan propio: velocidad igual o mayor, precio igual o menor.
- * Entre los que califican, prioriza el bundle con más servicios incluidos.
+ * calcula dos recomendaciones:
+ * - bestSavings: el más barato que ya es mejor (velocidad ≥, precio ≤)
+ * - maxPlan: el plan más completo del catálogo estándar, sin importar el precio del prospecto
  */
-export function recommendPlanForProspect(
+export function findProspectOptions(
   competitorSpeedMbps: number,
   competitorPrice: number,
   allPlans: Plan[]
-): Plan | null {
-  if (competitorSpeedMbps <= 0 || competitorPrice <= 0) return null;
+): DualProspectOptions {
+  if (competitorSpeedMbps <= 0) return { bestSavings: null, maxPlan: null };
 
-  const candidates = allPlans.filter(
-    (plan) => internetSpeed(plan) >= competitorSpeedMbps && plan.promo_price_2025 <= competitorPrice
-  );
+  const eligible = allPlans
+    .filter((plan) => !plan.is_specialty && internetSpeed(plan) >= competitorSpeedMbps)
+    .sort(rankBySavings);
 
-  candidates.sort((a, b) => {
-    const servicesDiff = includedCount(b) - includedCount(a);
-    if (servicesDiff !== 0) return servicesDiff;
-    const speedDiff = internetSpeed(b) - internetSpeed(a);
-    if (speedDiff !== 0) return speedDiff;
-    return a.promo_price_2025 - b.promo_price_2025;
-  });
+  const bestSavings =
+    competitorPrice > 0 ? eligible.filter((plan) => plan.promo_price_2025 <= competitorPrice)[0] ?? null : null;
+  const topMax = eligible[0] ?? null;
+  const maxPlan = topMax && topMax.id !== bestSavings?.id ? topMax : null;
 
-  return candidates[0] ?? null;
+  return { bestSavings, maxPlan };
 }
 
 /** Texto corto describiendo lo que incluye un plan: "300 Mbps + Cable TV" */

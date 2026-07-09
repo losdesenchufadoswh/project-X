@@ -11,7 +11,7 @@ export interface PlanService {
   included: boolean;
 }
 
-export type BundleType = "internet_only" | "internet_cable" | "triple_play";
+export type BundleType = "internet_only" | "internet_phone" | "triple_play";
 
 export interface Plan {
   id: string;
@@ -26,7 +26,9 @@ export interface Plan {
   bundle_code: string;
   is_bundle: boolean;
   bundle_type: BundleType;
-  /** 1, 2, 3... para ordenar sugerencias (mayor tier = más valor) */
+  /** 1, 2, 3... para ordenar el catálogo (mayor tier = más valor); no determina elegibilidad de upsell */
   tier: number;
+  /** Planes premium (ej. Ultimate con todos los canales) — no se ofrecen como "MAX" automático, solo manual */
+  is_specialty: boolean;
   created_at: string;
 }

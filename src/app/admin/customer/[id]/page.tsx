@@ -1,16 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { BundleComparison } from "@/components/customer/BundleComparison";
 import { CurrentPlan } from "@/components/customer/CurrentPlan";
 import { EditCustomerButton } from "@/components/customer/EditCustomerButton";
-import { SavingsCalculator } from "@/components/customer/SavingsCalculator";
-import { ExecuteButton } from "@/components/dashboard/ExecuteButton";
+import { UpsellOptionCard } from "@/components/customer/UpsellOptionCard";
 import { Badge } from "@/components/ui/badge";
 import { getCustomer } from "@/lib/db/customers";
 import { listPlans } from "@/lib/db/plans";
-import { findBestUpsell } from "@/lib/pricing/bundles";
-import { calculateValueAdd } from "@/lib/pricing/calculator";
+import { findUpsellOptions } from "@/lib/pricing/bundles";
 import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -26,9 +23,9 @@ export default async function CustomerDetailPage({
 
   const plans = await listPlans();
   const currentPlan = plans.find((p) => p.id === customer.current_plan_id) ?? null;
-  const suggestion = currentPlan
-    ? findBestUpsell(currentPlan, plans, customer.price_paying_now)
-    : null;
+  const { bestSavings, maxPlan } = currentPlan
+    ? findUpsellOptions(currentPlan, plans, customer.price_paying_now)
+    : { bestSavings: null, maxPlan: null };
 
   return (
     <div className="space-y-6">
@@ -71,7 +68,7 @@ export default async function CustomerDetailPage({
         </p>
       )}
 
-      {currentPlan && !suggestion && (
+      {currentPlan && !bestSavings && !maxPlan && (
         <div className="space-y-4">
           <CurrentPlan
             plan={currentPlan}
@@ -84,37 +81,22 @@ export default async function CustomerDetailPage({
         </div>
       )}
 
-      {currentPlan && suggestion && (
-        <>
-          <BundleComparison
-            currentPlan={currentPlan}
-            pricePayingNow={customer.price_paying_now}
-            suggestedPlan={suggestion}
-          />
+      {currentPlan && bestSavings && (
+        <UpsellOptionCard
+          kind="savings"
+          customer={customer}
+          currentPlan={currentPlan}
+          suggestedPlan={bestSavings}
+        />
+      )}
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <SavingsCalculator
-              pricePayingNow={customer.price_paying_now}
-              newPrice={suggestion.promo_price_2025}
-              valueAdd={calculateValueAdd(currentPlan, suggestion)}
-            />
-
-            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-muted/20 bg-surface p-6">
-              <p className="text-center text-sm text-muted">
-                Al ejecutar, Firebase se actualiza al instante y el cambio queda en el historial.
-              </p>
-              <ExecuteButton
-                customerId={customer.id}
-                customerName={customer.name}
-                newPlanId={suggestion.id}
-                newPlanName={suggestion.name}
-                newPrice={suggestion.promo_price_2025}
-                fromPlanName={currentPlan.name}
-                fromPrice={customer.price_paying_now}
-              />
-            </div>
-          </div>
-        </>
+      {currentPlan && maxPlan && (
+        <UpsellOptionCard
+          kind="max"
+          customer={customer}
+          currentPlan={currentPlan}
+          suggestedPlan={maxPlan}
+        />
       )}
     </div>
   );

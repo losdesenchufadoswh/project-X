@@ -1,7 +1,7 @@
 /**
  * Seed del catálogo de planes (y clientes demo con --demo).
  *
- *   npm run seed        → solo planes (merge, no borra nada)
+ *   npm run seed        → solo planes (borra el catálogo viejo y siembra el nuevo)
  *   npm run seed:demo   → planes + 5 clientes de ejemplo
  *
  * Requiere FIREBASE_ADMIN_SDK_KEY en .env.local
@@ -47,10 +47,31 @@ const db = getFirestore();
 
 const now = new Date().toISOString();
 
-// ── Catálogo: 8 planes ────────────────────────────────────────
-// tier ordena el valor; el motor sugiere dentro de los próximos 2 tiers
-// con precio promo ≤ lo que el cliente paga hoy.
+// ── Catálogo real ─────────────────────────────────────────────
+// 1 línea telefónica asumida en todos los 2P/3P (no especificado por el negocio).
+// tier ordena el catálogo (más completo = mayor tier); el motor de sugerencias
+// NO usa el tier para elegibilidad, solo velocidad/servicios/precio reales.
 const plans = [
+  // Internet solo
+  {
+    id: "PLAN_40M_ONLY",
+    name: "40M Internet Only",
+    description: "40 Mbps Internet",
+    services: [
+      { type: "internet", speed: 40, included: true },
+      { type: "cable_tv", channels: null, included: false },
+      { type: "phone_lines", count: 0, included: false },
+    ],
+    price_2025: 44.99,
+    promo_price_2025: 37.99,
+    discount_code: "8UD01",
+    bundle_code: "R6UA1",
+    is_bundle: false,
+    bundle_type: "internet_only",
+    tier: 1,
+    is_specialty: false,
+    created_at: now,
+  },
   {
     id: "PLAN_100M_ONLY",
     name: "100M Internet Only",
@@ -60,31 +81,33 @@ const plans = [
       { type: "cable_tv", channels: null, included: false },
       { type: "phone_lines", count: 0, included: false },
     ],
-    price_2025: 54.99,
-    promo_price_2025: 49.99,
-    discount_code: "8UD01",
-    bundle_code: "R6UA1",
+    price_2025: 64.99,
+    promo_price_2025: 57.99,
+    discount_code: "8UD02",
+    bundle_code: "R6UA2",
     is_bundle: false,
     bundle_type: "internet_only",
-    tier: 1,
+    tier: 2,
+    is_specialty: false,
     created_at: now,
   },
   {
     id: "PLAN_300M_ONLY",
     name: "300M Internet Only",
-    description: "300 Mbps Internet",
+    description: "300 Mbps Internet — promo válida por 6 meses",
     services: [
       { type: "internet", speed: 300, included: true },
       { type: "cable_tv", channels: null, included: false },
       { type: "phone_lines", count: 0, included: false },
     ],
     price_2025: 74.99,
-    promo_price_2025: 69.99,
-    discount_code: "8UD05",
-    bundle_code: "R6UC1",
+    promo_price_2025: 52.99,
+    discount_code: "8UD03",
+    bundle_code: "R6UA3",
     is_bundle: false,
     bundle_type: "internet_only",
-    tier: 2,
+    tier: 3,
+    is_specialty: false,
     created_at: now,
   },
   {
@@ -96,109 +119,195 @@ const plans = [
       { type: "cable_tv", channels: null, included: false },
       { type: "phone_lines", count: 0, included: false },
     ],
-    price_2025: 84.99,
-    promo_price_2025: 79.99,
-    discount_code: "8UD07",
-    bundle_code: "R6UD1",
+    price_2025: 74.99,
+    promo_price_2025: 67.99,
+    discount_code: "8UD04",
+    bundle_code: "R6UA4",
     is_bundle: false,
     bundle_type: "internet_only",
-    tier: 3,
-    created_at: now,
-  },
-  {
-    id: "PLAN_300M_CABLE",
-    name: "300M Internet + Cable TV",
-    description: "300 Mbps + Cable TV estándar",
-    services: [
-      { type: "internet", speed: 300, included: true },
-      { type: "cable_tv", channels: null, included: true },
-      { type: "phone_lines", count: 0, included: false },
-    ],
-    price_2025: 84.99,
-    promo_price_2025: 64.99,
-    discount_code: "8UD09",
-    bundle_code: "R6UE2",
-    is_bundle: true,
-    bundle_type: "internet_cable",
-    tier: 3,
-    created_at: now,
-  },
-  {
-    // ⭐ El del caso de uso: 300M $69.99 → 500M + Cable $68.99 (¡$1 menos!)
-    id: "PLAN_500M_CABLE",
-    name: "500M Internet + Cable TV",
-    description: "500 Mbps + Cable TV estándar",
-    services: [
-      { type: "internet", speed: 500, included: true },
-      { type: "cable_tv", channels: null, included: true },
-      { type: "phone_lines", count: 0, included: false },
-    ],
-    price_2025: 89.99,
-    promo_price_2025: 68.99,
-    discount_code: "8UD11",
-    bundle_code: "R6UF2",
-    is_bundle: true,
-    bundle_type: "internet_cable",
     tier: 4,
+    is_specialty: false,
     created_at: now,
   },
   {
     id: "PLAN_1G_ONLY",
     name: "1 Gig Internet Only",
-    description: "1000 Mbps Internet",
+    description: "1000 Mbps Internet — Promo de Verano",
     services: [
       { type: "internet", speed: 1000, included: true },
       { type: "cable_tv", channels: null, included: false },
       { type: "phone_lines", count: 0, included: false },
     ],
-    price_2025: 99.99,
-    promo_price_2025: 89.99,
-    discount_code: "8UD13",
-    bundle_code: "R6UG1",
+    price_2025: 79.99,
+    promo_price_2025: 59.99,
+    discount_code: "8UD05",
+    bundle_code: "R6UA5",
     is_bundle: false,
     bundle_type: "internet_only",
-    tier: 4,
+    tier: 5,
+    is_specialty: false,
+    created_at: now,
+  },
+
+  // 2P — Internet + Teléfono
+  {
+    id: "PLAN_100M_2P",
+    name: "2P 100M",
+    description: "100 Mbps + 1 línea telefónica",
+    services: [
+      { type: "internet", speed: 100, included: true },
+      { type: "cable_tv", channels: null, included: false },
+      { type: "phone_lines", count: 1, included: true },
+    ],
+    price_2025: 64.99,
+    promo_price_2025: 57.99,
+    discount_code: "8UD06",
+    bundle_code: "R6UB1",
+    is_bundle: true,
+    bundle_type: "internet_phone",
+    tier: 6,
+    is_specialty: false,
     created_at: now,
   },
   {
-    id: "PLAN_500M_TRIPLE",
-    name: "500M Triple Play",
-    description: "500 Mbps + Cable TV + 1 línea telefónica",
+    id: "PLAN_500M_2P",
+    name: "2P 500M",
+    description: "500 Mbps + 1 línea telefónica",
+    services: [
+      { type: "internet", speed: 500, included: true },
+      { type: "cable_tv", channels: null, included: false },
+      { type: "phone_lines", count: 1, included: true },
+    ],
+    price_2025: 74.99,
+    promo_price_2025: 67.99,
+    discount_code: "8UD07",
+    bundle_code: "R6UB2",
+    is_bundle: true,
+    bundle_type: "internet_phone",
+    tier: 7,
+    is_specialty: false,
+    created_at: now,
+  },
+  {
+    id: "PLAN_1G_2P",
+    name: "2P 1 Gig",
+    description: "1000 Mbps + 1 línea telefónica",
+    services: [
+      { type: "internet", speed: 1000, included: true },
+      { type: "cable_tv", channels: null, included: false },
+      { type: "phone_lines", count: 1, included: true },
+    ],
+    price_2025: 94.99,
+    promo_price_2025: 84.99,
+    discount_code: "8UD08",
+    bundle_code: "R6UB3",
+    is_bundle: true,
+    bundle_type: "internet_phone",
+    tier: 8,
+    is_specialty: false,
+    created_at: now,
+  },
+
+  // 3P — Internet + TV + Teléfono (primer mes de TV gratis)
+  {
+    id: "PLAN_100M_3P",
+    name: "3P 100M",
+    description: "100 Mbps + Cable TV + 1 línea telefónica — primer mes de TV gratis",
+    services: [
+      { type: "internet", speed: 100, included: true },
+      { type: "cable_tv", channels: null, included: true },
+      { type: "phone_lines", count: 1, included: true },
+    ],
+    price_2025: 74.99,
+    promo_price_2025: 67.99,
+    discount_code: "8UD09",
+    bundle_code: "R6UC1",
+    is_bundle: true,
+    bundle_type: "triple_play",
+    tier: 9,
+    is_specialty: false,
+    created_at: now,
+  },
+  {
+    id: "PLAN_300M_3P",
+    name: "3P 300M",
+    description: "300 Mbps + Cable TV + 1 línea telefónica — primer mes de TV gratis",
+    services: [
+      { type: "internet", speed: 300, included: true },
+      { type: "cable_tv", channels: null, included: true },
+      { type: "phone_lines", count: 1, included: true },
+    ],
+    price_2025: 79.99,
+    promo_price_2025: 71.49,
+    discount_code: "8UD10",
+    bundle_code: "R6UC2",
+    is_bundle: true,
+    bundle_type: "triple_play",
+    tier: 10,
+    is_specialty: false,
+    created_at: now,
+  },
+  {
+    id: "PLAN_500M_3P",
+    name: "3P 500M",
+    description: "500 Mbps + Cable TV + 1 línea telefónica — primer mes de TV gratis",
     services: [
       { type: "internet", speed: 500, included: true },
       { type: "cable_tv", channels: null, included: true },
       { type: "phone_lines", count: 1, included: true },
     ],
-    price_2025: 109.99,
-    promo_price_2025: 79.99,
-    discount_code: "8UD15",
-    bundle_code: "R6UH3",
+    price_2025: 89.99,
+    promo_price_2025: 81.49,
+    discount_code: "8UD11",
+    bundle_code: "R6UC3",
     is_bundle: true,
     bundle_type: "triple_play",
-    tier: 5,
+    tier: 11,
+    is_specialty: false,
     created_at: now,
   },
   {
-    id: "PLAN_1G_TRIPLE",
-    name: "1 Gig Triple Play",
-    description: "1000 Mbps + Cable TV + 2 líneas telefónicas",
+    id: "PLAN_1G_3P",
+    name: "3P 1 Gig",
+    description: "1000 Mbps + Cable TV + 1 línea telefónica — primer mes de TV gratis",
     services: [
       { type: "internet", speed: 1000, included: true },
       { type: "cable_tv", channels: null, included: true },
-      { type: "phone_lines", count: 2, included: true },
+      { type: "phone_lines", count: 1, included: true },
     ],
-    price_2025: 139.99,
-    promo_price_2025: 99.99,
-    discount_code: "8UD17",
-    bundle_code: "R6UJ3",
+    price_2025: 94.99,
+    promo_price_2025: 86.49,
+    discount_code: "8UD12",
+    bundle_code: "R6UC4",
     is_bundle: true,
     bundle_type: "triple_play",
-    tier: 6,
+    tier: 12,
+    is_specialty: false,
+    created_at: now,
+  },
+  {
+    id: "PLAN_1G_3P_ULTIMATE",
+    name: "3P 1 Gig Ultimate",
+    description:
+      "1000 Mbps + Cable TV con todos los canales (Ultimate) + 1 línea telefónica — primer mes de TV gratis",
+    services: [
+      { type: "internet", speed: 1000, included: true },
+      { type: "cable_tv", channels: null, included: true },
+      { type: "phone_lines", count: 1, included: true },
+    ],
+    price_2025: 129.99,
+    promo_price_2025: 118.99,
+    discount_code: "8UD13",
+    bundle_code: "R6UC5",
+    is_bundle: true,
+    bundle_type: "triple_play",
+    tier: 13,
+    is_specialty: true,
     created_at: now,
   },
 ];
 
-// ── Clientes demo (solo con --demo) ───────────────────────────
+// ── Clientes demo (solo con --demo) — apuntan al catálogo real de arriba ──
 const demoCustomers = [
   {
     id: "CUST_DEMO_001",
@@ -221,7 +330,7 @@ const demoCustomers = [
     email: "maria@example.com",
     type: "B2C",
     current_plan_id: "PLAN_100M_ONLY",
-    price_paying_now: 49.99,
+    price_paying_now: 62.99,
     signup_date: "2023-11-02T10:00:00.000Z",
     last_plan_change: null,
     notes: "",
@@ -248,8 +357,8 @@ const demoCustomers = [
     phone: "+1-787-555-4567",
     email: "carmen@example.com",
     type: "B2C",
-    current_plan_id: "PLAN_300M_CABLE",
-    price_paying_now: 64.99,
+    current_plan_id: "PLAN_100M_3P",
+    price_paying_now: 74.99,
     signup_date: "2025-05-10T10:00:00.000Z",
     last_plan_change: null,
     notes: "",
@@ -262,11 +371,11 @@ const demoCustomers = [
     phone: "+1-787-555-5678",
     email: "luisf@example.com",
     type: "B2C",
-    current_plan_id: "PLAN_1G_TRIPLE",
+    current_plan_id: "PLAN_1G_3P",
     price_paying_now: 99.99,
     signup_date: "2025-09-01T10:00:00.000Z",
     last_plan_change: null,
-    notes: "Ya está en el tope del catálogo",
+    notes: "Ya está cerca del tope del catálogo",
     created_at: now,
     updated_at: now,
   },
@@ -275,11 +384,18 @@ const demoCustomers = [
 async function main() {
   const withDemo = process.argv.includes("--demo");
 
-  console.log(`Sembrando ${plans.length} planes...`);
+  console.log("Borrando catálogo de planes anterior...");
+  const oldPlans = await db.collection("plans").get();
+  for (const doc of oldPlans.docs) {
+    await doc.ref.delete();
+  }
+  console.log(`  ✓ ${oldPlans.size} plan(es) viejo(s) borrado(s)`);
+
+  console.log(`\nSembrando ${plans.length} planes...`);
   for (const plan of plans) {
     const { id, ...data } = plan;
-    await db.collection("plans").doc(id).set(data, { merge: true });
-    console.log(`  ✓ ${id} — ${plan.name} (${plan.promo_price_2025})`);
+    await db.collection("plans").doc(id).set(data);
+    console.log(`  ✓ ${id} — ${plan.name} ($${plan.promo_price_2025})`);
   }
 
   if (withDemo) {

@@ -17,6 +17,7 @@ export interface PlanInput {
   discountCode: string;
   bundleCode: string;
   tier: number;
+  isSpecialty: boolean;
 }
 
 interface ActionResult {
@@ -39,8 +40,8 @@ function buildServices(input: PlanInput): PlanService[] {
 }
 
 function deriveBundleType(input: PlanInput): BundleType {
-  if (input.internetSpeed > 0 && input.cableIncluded && input.phoneLines > 0) return "triple_play";
-  if (input.internetSpeed > 0 && input.cableIncluded) return "internet_cable";
+  if (input.cableIncluded) return "triple_play";
+  if (input.phoneLines > 0) return "internet_phone";
   return "internet_only";
 }
 
@@ -79,6 +80,7 @@ export async function savePlanAction(input: PlanInput): Promise<ActionResult> {
     is_bundle: bundleType !== "internet_only",
     bundle_type: bundleType,
     tier: input.tier,
+    is_specialty: input.isSpecialty,
     created_at: existing?.created_at ?? new Date().toISOString(),
   };
 
