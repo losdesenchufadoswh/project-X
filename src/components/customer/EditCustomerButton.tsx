@@ -22,7 +22,6 @@ function toForm(customer: Customer): CustomerContactInput {
     town: customer.town ?? "",
     creditCode: customer.credit_code ?? "",
     installDate: customer.install_date ?? "",
-    notes: customer.notes,
   };
 }
 
@@ -138,17 +137,9 @@ export function EditCustomerButton({ customer }: { customer: Customer }) {
             </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs text-muted">Notas</label>
-            <Input
-              value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            />
-          </div>
-
           <p className="text-xs text-muted">
-            El plan y el precio solo cambian ejecutando un upsell, para mantener el historial de
-            auditoría completo.
+            Las notas se escriben en la bitácora del cliente (quedan fechadas). El plan y el precio
+            solo cambian ejecutando un upsell, para mantener el historial de auditoría completo.
           </p>
 
           {error && <p className="text-sm text-danger">{error}</p>}

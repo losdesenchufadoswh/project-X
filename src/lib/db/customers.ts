@@ -23,3 +23,7 @@ export async function createCustomer(data: Omit<Customer, "id">): Promise<string
   await ref.set(data);
   return ref.id;
 }
+
+export async function deleteCustomer(id: string): Promise<void> {
+  await adminDb().collection(COLLECTION).doc(id).delete();
+}

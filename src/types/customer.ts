@@ -1,5 +1,19 @@
 export type CustomerType = "B2B" | "B2C";
 
+export type CallStatus = "answered" | "no_answer" | "disconnected";
+
+export interface CustomerNote {
+  text: string;
+  /** ISO 8601 — cuándo se escribió la nota */
+  created_at: string;
+}
+
+export interface LastCall {
+  status: CallStatus;
+  /** ISO 8601 — cuándo fue la llamada */
+  date: string;
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -20,7 +34,12 @@ export interface Customer {
   credit_code: string;
   /** Fecha de instalación (YYYY-MM-DD) — null si aún no se agenda */
   install_date: string | null;
+  /** Legacy: nota única sin fecha (clientes viejos) — las nuevas van a notes_log */
   notes: string;
+  /** Bitácora de notas con fecha */
+  notes_log?: CustomerNote[];
+  /** Resultado de la última llamada al cliente */
+  last_call?: LastCall | null;
   created_at: string;
   updated_at: string;
 }

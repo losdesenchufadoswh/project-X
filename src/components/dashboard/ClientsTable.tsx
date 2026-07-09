@@ -6,11 +6,13 @@ import { MapPin, Search, SlidersHorizontal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { CallStatusButtons } from "@/components/customer/CallStatusButtons";
 import { ServiceChips, type ServiceFlags } from "@/components/customer/ServiceChips";
 import { ExecuteButton } from "./ExecuteButton";
 import { NewCustomerButton } from "./NewCustomerButton";
 import { UpsellSuggestion } from "./UpsellSuggestion";
 import { formatMoney } from "@/lib/utils";
+import type { LastCall } from "@/types/customer";
 import type { Plan } from "@/types/plan";
 
 export interface DashboardRow {
@@ -20,6 +22,7 @@ export interface DashboardRow {
   type: "B2B" | "B2C";
   town: string;
   services: ServiceFlags;
+  lastCall: LastCall | null;
   planName: string;
   priceNow: number;
   suggestion: {
@@ -144,6 +147,7 @@ export function ClientsTable({ rows, plans }: { rows: DashboardRow[]; plans: Pla
           <TR>
             <TH>Nombre</TH>
             <TH>Servicios</TH>
+            <TH>Llamada</TH>
             <TH>Plan Actual</TH>
             <TH>Paga</TH>
             <TH>Sugerencia Upsell</TH>
@@ -154,7 +158,7 @@ export function ClientsTable({ rows, plans }: { rows: DashboardRow[]; plans: Pla
         <TBody>
           {filtered.length === 0 && (
             <TR>
-              <TD colSpan={7} className="py-8 text-center text-muted">
+              <TD colSpan={8} className="py-8 text-center text-muted">
                 No se encontraron clientes.
               </TD>
             </TR>
@@ -179,6 +183,9 @@ export function ClientsTable({ rows, plans }: { rows: DashboardRow[]; plans: Pla
               </TD>
               <TD>
                 <ServiceChips flags={row.services} />
+              </TD>
+              <TD>
+                <CallStatusButtons customerId={row.id} lastCall={row.lastCall} />
               </TD>
               <TD>{row.planName}</TD>
               <TD className="font-data">{formatMoney(row.priceNow)}</TD>

@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { getSessionUser, isAdmin } from "@/lib/auth/session";
-import { createCustomer, getCustomer, updateCustomer } from "@/lib/db/customers";
+import { createCustomer, deleteCustomer, getCustomer, updateCustomer } from "@/lib/db/customers";
 import { getPlan } from "@/lib/db/plans";
-import type { CustomerType } from "@/types/customer";
+import type { CallStatus, CustomerNote, CustomerType } from "@/types/customer";
 
 interface ActionResult {
   success: boolean;
@@ -48,11 +48,18 @@ export async function createCustomerAction(input: NewCustomerInput): Promise<Act
   }
 
   const now = new Date().toISOString();
-  const conversionNote =
-    input.competitorSpeedMbps > 0 && input.competitorPrice > 0
-      ? `Antes pagaba $${input.competitorPrice.toFixed(2)} por ${input.competitorSpeedMbps} Mbps con otro proveedor.`
-      : "";
-  const notes = [conversionNote, input.notes.trim()].filter(Boolean).join(" ");
+
+  // Todas las notas nacen fechadas en la bitácora
+  const noteEntries: CustomerNote[] = [];
+  if (input.competitorSpeedMbps > 0 && input.competitorPrice > 0) {
+    noteEntries.push({
+      text: `Antes pagaba $${input.competitorPrice.toFixed(2)} por ${input.competitorSpeedMbps} Mbps con otro proveedor.`,
+      created_at: now,
+    });
+  }
+  if (input.notes.trim()) {
+    noteEntries.push({ text: input.notes.trim(), created_at: now });
+  }
 
   await createCustomer({
     name: input.name.trim(),
@@ -66,7 +73,9 @@ export async function createCustomerAction(input: NewCustomerInput): Promise<Act
     town: input.town.trim(),
     credit_code: input.creditCode.trim().toUpperCase(),
     install_date: null,
-    notes,
+    notes: "",
+    notes_log: noteEntries,
+    last_call: null,
     created_at: now,
     updated_at: now,
   });
@@ -84,7 +93,6 @@ export interface CustomerContactInput {
   creditCode: string;
   /** YYYY-MM-DD o "" si aún no se agenda */
   installDate: string;
-  notes: string;
 }
 
 // Nota: plan y precio NUNCA se editan aquí — solo executeUpsellAction puede cambiarlos,
@@ -110,8 +118,74 @@ export async function updateCustomerContactAction(
     town: input.town.trim(),
     credit_code: input.creditCode.trim().toUpperCase(),
     install_date: input.installDate.trim() || null,
-    notes: input.notes.trim(),
     updated_at: new Date().toISOString(),
+  });
+
+  revalidatePath("/admin/dashboard");
+  revalidatePath(`/admin/customer/${customerId}`);
+  return { success: true };
+}
+
+export async function deleteCustomerAction(customerId: string): Promise<ActionResult> {
+  if (!(await requireAdminSession())) return { success: false, error: "No autorizado." };
+
+  const existing = await getCustomer(customerId);
+  if (!existing) return { success: false, error: "Cliente no encontrado." };
+
+  // El historial de upsells NO se borra: upsell_log guarda nombre desnormalizado (auditoría)
+  await deleteCustomer(customerId);
+
+  revalidatePath("/admin/dashboard");
+  return { success: true };
+}
+
+export async function addCustomerNoteAction(
+  customerId: string,
+  text: string
+): Promise<ActionResult> {
+  if (!(await requireAdminSession())) return { success: false, error: "No autorizado." };
+
+  const trimmed = text.trim();
+  if (!trimmed) return { success: false, error: "La nota no puede estar vacía." };
+
+  const existing = await getCustomer(customerId);
+  if (!existing) return { success: false, error: "Cliente no encontrado." };
+
+  const now = new Date().toISOString();
+  const entry: CustomerNote = { text: trimmed, created_at: now };
+
+  await updateCustomer(customerId, {
+    notes_log: [...(existing.notes_log ?? []), entry],
+    updated_at: now,
+  });
+
+  revalidatePath(`/admin/customer/${customerId}`);
+  return { success: true };
+}
+
+const callStatusLabels: Record<CallStatus, string> = {
+  answered: "Contestó",
+  no_answer: "No contestó",
+  disconnected: "Desconectado",
+};
+
+export async function setCallStatusAction(
+  customerId: string,
+  status: CallStatus
+): Promise<ActionResult> {
+  if (!(await requireAdminSession())) return { success: false, error: "No autorizado." };
+
+  const existing = await getCustomer(customerId);
+  if (!existing) return { success: false, error: "Cliente no encontrado." };
+
+  const now = new Date().toISOString();
+  // La llamada también queda en la bitácora, con fecha
+  const entry: CustomerNote = { text: `📞 Llamada: ${callStatusLabels[status]}`, created_at: now };
+
+  await updateCustomer(customerId, {
+    last_call: { status, date: now },
+    notes_log: [...(existing.notes_log ?? []), entry],
+    updated_at: now,
   });
 
   revalidatePath("/admin/dashboard");

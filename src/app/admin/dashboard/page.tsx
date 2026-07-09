@@ -34,6 +34,7 @@ export default async function DashboardPage() {
       type: customer.type,
       town: customer.town ?? "",
       services: planToServiceFlags(currentPlan),
+      lastCall: customer.last_call ?? null,
       planName: currentPlan?.name ?? "Plan desconocido",
       priceNow: customer.price_paying_now,
       suggestion:

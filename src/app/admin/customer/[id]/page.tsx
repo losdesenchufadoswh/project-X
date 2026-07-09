@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarCheck, KeyRound, MapPin } from "lucide-react";
+import { ArrowLeft, CalendarCheck, KeyRound, MapPin, PhoneCall } from "lucide-react";
+import { CallStatusButtons } from "@/components/customer/CallStatusButtons";
 import { CurrentPlan } from "@/components/customer/CurrentPlan";
+import { CustomerNotes } from "@/components/customer/CustomerNotes";
+import { DeleteCustomerButton } from "@/components/customer/DeleteCustomerButton";
 import { EditCustomerButton } from "@/components/customer/EditCustomerButton";
 import { ServiceChips, planToServiceFlags } from "@/components/customer/ServiceChips";
 import { UpsellOptionCard } from "@/components/customer/UpsellOptionCard";
@@ -53,22 +56,31 @@ export default async function CustomerDetailPage({
             Cliente desde {formatDate(customer.signup_date)} · Último cambio de plan:{" "}
             {formatDate(customer.last_plan_change)}
           </p>
-          {customer.notes && (
-            <p className="mt-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-sm text-warning">
-              {customer.notes}
-            </p>
-          )}
         </div>
-        <EditCustomerButton customer={customer} />
+        <div className="flex gap-1">
+          <EditCustomerButton customer={customer} />
+          <DeleteCustomerButton customerId={customer.id} customerName={customer.name} />
+        </div>
       </div>
 
-      {/* Datos, servicios contratados e instalación (venta ya cerrada) */}
-      <div className="grid gap-4 md:grid-cols-3">
+      {/* Datos, servicios contratados, instalación y llamada de hoy */}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="hud-panel p-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
             Servicios contratados
           </p>
           <ServiceChips flags={planToServiceFlags(currentPlan)} size="md" />
+        </div>
+
+        <div className="hud-panel p-4">
+          <p className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-muted">
+            <PhoneCall size={13} /> Llamada de hoy
+          </p>
+          <CallStatusButtons
+            customerId={customer.id}
+            lastCall={customer.last_call ?? null}
+            size="md"
+          />
         </div>
 
         <div className="hud-panel p-4">
@@ -97,6 +109,12 @@ export default async function CustomerDetailPage({
           </div>
         </div>
       </div>
+
+      <CustomerNotes
+        customerId={customer.id}
+        notesLog={customer.notes_log ?? []}
+        legacyNote={customer.notes ?? ""}
+      />
 
       {!currentPlan && (
         <p className="rounded-lg border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
