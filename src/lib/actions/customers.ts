@@ -22,6 +22,10 @@ export interface NewCustomerInput {
   email: string;
   phone: string;
   type: CustomerType;
+  /** Pueblo / municipio */
+  town: string;
+  /** Código de crédito por letras */
+  creditCode: string;
   /** Velocidad que el prospecto tiene HOY con otro proveedor (Mbps) — solo para calcular la recomendación */
   competitorSpeedMbps: number;
   /** Precio que el prospecto paga HOY con otro proveedor — solo para calcular la recomendación */
@@ -59,6 +63,9 @@ export async function createCustomerAction(input: NewCustomerInput): Promise<Act
     price_paying_now: plan.promo_price_2025,
     signup_date: now,
     last_plan_change: null,
+    town: input.town.trim(),
+    credit_code: input.creditCode.trim().toUpperCase(),
+    install_date: null,
     notes,
     created_at: now,
     updated_at: now,
@@ -73,6 +80,10 @@ export interface CustomerContactInput {
   email: string;
   phone: string;
   type: CustomerType;
+  town: string;
+  creditCode: string;
+  /** YYYY-MM-DD o "" si aún no se agenda */
+  installDate: string;
   notes: string;
 }
 
@@ -96,6 +107,9 @@ export async function updateCustomerContactAction(
     email: input.email.trim(),
     phone: input.phone.trim(),
     type: input.type,
+    town: input.town.trim(),
+    credit_code: input.creditCode.trim().toUpperCase(),
+    install_date: input.installDate.trim() || null,
     notes: input.notes.trim(),
     updated_at: new Date().toISOString(),
   });

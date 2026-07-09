@@ -4,6 +4,7 @@ import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil } from "lucide-react";
 import { updateCustomerContactAction, type CustomerContactInput } from "@/lib/actions/customers";
+import { PR_TOWNS } from "@/lib/pr-towns";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -12,27 +13,28 @@ import type { Customer } from "@/types/customer";
 const selectClassName =
   "h-10 w-full rounded-lg border border-muted/30 bg-surface px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
 
+function toForm(customer: Customer): CustomerContactInput {
+  return {
+    name: customer.name,
+    email: customer.email,
+    phone: customer.phone,
+    type: customer.type,
+    town: customer.town ?? "",
+    creditCode: customer.credit_code ?? "",
+    installDate: customer.install_date ?? "",
+    notes: customer.notes,
+  };
+}
+
 export function EditCustomerButton({ customer }: { customer: Customer }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState<CustomerContactInput>({
-    name: customer.name,
-    email: customer.email,
-    phone: customer.phone,
-    type: customer.type,
-    notes: customer.notes,
-  });
+  const [form, setForm] = useState<CustomerContactInput>(toForm(customer));
 
   function openDialog() {
-    setForm({
-      name: customer.name,
-      email: customer.email,
-      phone: customer.phone,
-      type: customer.type,
-      notes: customer.notes,
-    });
+    setForm(toForm(customer));
     setError(null);
     setOpen(true);
   }
@@ -88,16 +90,52 @@ export function EditCustomerButton({ customer }: { customer: Customer }) {
             </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs text-muted">Tipo</label>
-            <select
-              value={form.type}
-              onChange={(e) => setForm({ ...form, type: e.target.value as "B2B" | "B2C" })}
-              className={selectClassName}
-            >
-              <option value="B2C">B2C</option>
-              <option value="B2B">B2B</option>
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs text-muted">Tipo</label>
+              <select
+                value={form.type}
+                onChange={(e) => setForm({ ...form, type: e.target.value as "B2B" | "B2C" })}
+                className={selectClassName}
+              >
+                <option value="B2C">B2C</option>
+                <option value="B2B">B2B</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted">Pueblo</label>
+              <Input
+                list="pr-towns-edit"
+                value={form.town}
+                onChange={(e) => setForm({ ...form, town: e.target.value })}
+                placeholder="Bayamón"
+              />
+              <datalist id="pr-towns-edit">
+                {PR_TOWNS.map((town) => (
+                  <option key={town} value={town} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs text-muted">Código de crédito</label>
+              <Input
+                value={form.creditCode}
+                onChange={(e) => setForm({ ...form, creditCode: e.target.value.toUpperCase() })}
+                placeholder="Ej. AB"
+                className="font-data uppercase"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted">Fecha de instalación</label>
+              <Input
+                type="date"
+                value={form.installDate}
+                onChange={(e) => setForm({ ...form, installDate: e.target.value })}
+              />
+            </div>
           </div>
 
           <div>

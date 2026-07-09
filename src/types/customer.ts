@@ -14,6 +14,12 @@ export interface Customer {
   signup_date: string;
   /** ISO 8601 — null si nunca ha cambiado de plan */
   last_plan_change: string | null;
+  /** Pueblo / municipio (ej. "Bayamón") */
+  town: string;
+  /** Código de crédito por letras — el admin sabe qué representa cada letra */
+  credit_code: string;
+  /** Fecha de instalación (YYYY-MM-DD) — null si aún no se agenda */
+  install_date: string | null;
   notes: string;
   created_at: string;
   updated_at: string;

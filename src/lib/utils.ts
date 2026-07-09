@@ -19,3 +19,14 @@ export function formatDate(iso: string | null): string {
     minute: "2-digit",
   });
 }
+
+/** Fecha de solo-día (YYYY-MM-DD). Ancla al mediodía para evitar corrimiento por zona horaria. */
+export function formatDateOnly(dateStr: string | null): string {
+  if (!dateStr) return "—";
+  return new Date(`${dateStr}T12:00:00`).toLocaleDateString("es-PR", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}

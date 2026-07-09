@@ -1,4 +1,5 @@
 import { ClientsTable, type DashboardRow } from "@/components/dashboard/ClientsTable";
+import { planToServiceFlags } from "@/components/customer/ServiceChips";
 import { listCustomers } from "@/lib/db/customers";
 import { listPlans } from "@/lib/db/plans";
 import { findBestUpsell } from "@/lib/pricing/bundles";
@@ -21,6 +22,8 @@ export default async function DashboardPage() {
       name: customer.name,
       email: customer.email,
       type: customer.type,
+      town: customer.town ?? "",
+      services: planToServiceFlags(currentPlan),
       planName: currentPlan?.name ?? "Plan desconocido",
       priceNow: customer.price_paying_now,
       suggestion:

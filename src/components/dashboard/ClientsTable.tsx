@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { MapPin, Search, SlidersHorizontal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { ServiceChips, type ServiceFlags } from "@/components/customer/ServiceChips";
 import { ExecuteButton } from "./ExecuteButton";
 import { NewCustomerButton } from "./NewCustomerButton";
 import { UpsellSuggestion } from "./UpsellSuggestion";
@@ -17,6 +18,8 @@ export interface DashboardRow {
   name: string;
   email: string;
   type: "B2B" | "B2C";
+  town: string;
+  services: ServiceFlags;
   planName: string;
   priceNow: number;
   suggestion: {
@@ -28,19 +31,45 @@ export interface DashboardRow {
   } | null;
 }
 
+type TypeFilter = "all" | "B2C" | "B2B";
+type ServiceFilter = "all" | "tv" | "phone" | "internet_only";
+type OpportunityFilter = "all" | "with_upsell" | "optimized";
+
+const selectClassName =
+  "h-10 rounded-lg border border-muted/30 bg-surface px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
+
 export function ClientsTable({ rows, plans }: { rows: DashboardRow[]; plans: Plan[] }) {
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [serviceFilter, setServiceFilter] = useState<ServiceFilter>("all");
+  const [opportunityFilter, setOpportunityFilter] = useState<OpportunityFilter>("all");
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return rows;
-    return rows.filter(
-      (row) =>
-        row.name.toLowerCase().includes(term) ||
-        row.email.toLowerCase().includes(term) ||
-        row.planName.toLowerCase().includes(term)
-    );
-  }, [rows, search]);
+    return rows.filter((row) => {
+      if (
+        term &&
+        !row.name.toLowerCase().includes(term) &&
+        !row.email.toLowerCase().includes(term) &&
+        !row.planName.toLowerCase().includes(term) &&
+        !row.town.toLowerCase().includes(term)
+      ) {
+        return false;
+      }
+      if (typeFilter !== "all" && row.type !== typeFilter) return false;
+      if (serviceFilter === "tv" && !row.services.tv) return false;
+      if (serviceFilter === "phone" && !row.services.phone) return false;
+      if (serviceFilter === "internet_only" && (row.services.tv || row.services.phone)) return false;
+      if (opportunityFilter === "with_upsell" && !row.suggestion) return false;
+      if (opportunityFilter === "optimized" && row.suggestion) return false;
+      return true;
+    });
+  }, [rows, search, typeFilter, serviceFilter, opportunityFilter]);
+
+  const activeFilters =
+    (typeFilter !== "all" ? 1 : 0) +
+    (serviceFilter !== "all" ? 1 : 0) +
+    (opportunityFilter !== "all" ? 1 : 0);
 
   return (
     <div className="space-y-4">
@@ -48,7 +77,7 @@ export function ClientsTable({ rows, plans }: { rows: DashboardRow[]; plans: Pla
         <div className="relative max-w-sm flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
           <Input
-            placeholder="Buscar cliente..."
+            placeholder="Buscar por nombre, email, plan o pueblo..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -57,10 +86,64 @@ export function ClientsTable({ rows, plans }: { rows: DashboardRow[]; plans: Pla
         <NewCustomerButton plans={plans} />
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="flex items-center gap-1 text-xs text-muted">
+          <SlidersHorizontal size={14} /> Filtros
+        </span>
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
+          className={selectClassName}
+          aria-label="Filtrar por tipo"
+        >
+          <option value="all">Todos los tipos</option>
+          <option value="B2C">B2C</option>
+          <option value="B2B">B2B</option>
+        </select>
+        <select
+          value={serviceFilter}
+          onChange={(e) => setServiceFilter(e.target.value as ServiceFilter)}
+          className={selectClassName}
+          aria-label="Filtrar por servicio"
+        >
+          <option value="all">Todos los servicios</option>
+          <option value="tv">Con TV</option>
+          <option value="phone">Con Teléfono</option>
+          <option value="internet_only">Solo Internet</option>
+        </select>
+        <select
+          value={opportunityFilter}
+          onChange={(e) => setOpportunityFilter(e.target.value as OpportunityFilter)}
+          className={selectClassName}
+          aria-label="Filtrar por oportunidad"
+        >
+          <option value="all">Toda oportunidad</option>
+          <option value="with_upsell">Con upsell</option>
+          <option value="optimized">Optimizados</option>
+        </select>
+        {activeFilters > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setTypeFilter("all");
+              setServiceFilter("all");
+              setOpportunityFilter("all");
+            }}
+            className="text-xs text-primary hover:underline"
+          >
+            Limpiar ({activeFilters})
+          </button>
+        )}
+        <span className="ml-auto text-xs text-muted">
+          {filtered.length} de {rows.length}
+        </span>
+      </div>
+
       <Table>
         <THead>
           <TR>
             <TH>Nombre</TH>
+            <TH>Servicios</TH>
             <TH>Plan Actual</TH>
             <TH>Paga</TH>
             <TH>Sugerencia Upsell</TH>
@@ -71,7 +154,7 @@ export function ClientsTable({ rows, plans }: { rows: DashboardRow[]; plans: Pla
         <TBody>
           {filtered.length === 0 && (
             <TR>
-              <TD colSpan={6} className="py-8 text-center text-muted">
+              <TD colSpan={7} className="py-8 text-center text-muted">
                 No se encontraron clientes.
               </TD>
             </TR>
@@ -88,6 +171,14 @@ export function ClientsTable({ rows, plans }: { rows: DashboardRow[]; plans: Pla
                 <p className="text-xs text-muted">
                   {row.type} · {row.email}
                 </p>
+                {row.town && (
+                  <p className="flex items-center gap-1 text-xs text-muted">
+                    <MapPin size={11} /> {row.town}
+                  </p>
+                )}
+              </TD>
+              <TD>
+                <ServiceChips flags={row.services} />
               </TD>
               <TD>{row.planName}</TD>
               <TD className="font-data">{formatMoney(row.priceNow)}</TD>

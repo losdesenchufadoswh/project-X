@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CalendarCheck, KeyRound, MapPin } from "lucide-react";
 import { CurrentPlan } from "@/components/customer/CurrentPlan";
 import { EditCustomerButton } from "@/components/customer/EditCustomerButton";
+import { ServiceChips, planToServiceFlags } from "@/components/customer/ServiceChips";
 import { UpsellOptionCard } from "@/components/customer/UpsellOptionCard";
 import { Badge } from "@/components/ui/badge";
 import { getCustomer } from "@/lib/db/customers";
 import { listPlans } from "@/lib/db/plans";
 import { findUpsellOptions } from "@/lib/pricing/bundles";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatDateOnly } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,42 @@ export default async function CustomerDetailPage({
           )}
         </div>
         <EditCustomerButton customer={customer} />
+      </div>
+
+      {/* Datos, servicios contratados e instalación (venta ya cerrada) */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-xl border border-muted/20 bg-surface p-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
+            Servicios contratados
+          </p>
+          <ServiceChips flags={planToServiceFlags(currentPlan)} size="md" />
+        </div>
+
+        <div className="rounded-xl border border-muted/20 bg-surface p-4">
+          <p className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-muted">
+            <CalendarCheck size={13} /> Instalación
+          </p>
+          {customer.install_date ? (
+            <p className="text-sm text-success">{formatDateOnly(customer.install_date)}</p>
+          ) : (
+            <p className="text-sm text-warning">Por agendar — usa &quot;Editar&quot;</p>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-muted/20 bg-surface p-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Datos</p>
+          <div className="space-y-1 text-sm">
+            <p className="flex items-center gap-1.5 text-muted">
+              <MapPin size={13} />
+              <span className="text-foreground">{customer.town || "Sin pueblo"}</span>
+            </p>
+            <p className="flex items-center gap-1.5 text-muted">
+              <KeyRound size={13} />
+              Crédito:{" "}
+              <span className="font-data text-primary">{customer.credit_code || "—"}</span>
+            </p>
+          </div>
+        </div>
       </div>
 
       {!currentPlan && (

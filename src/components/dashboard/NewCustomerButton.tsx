@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { createCustomerAction, type NewCustomerInput } from "@/lib/actions/customers";
 import { COMPETITOR_SPEED_OPTIONS_MBPS, describePlan, findProspectOptions } from "@/lib/pricing/prospects";
+import { PR_TOWNS } from "@/lib/pr-towns";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,8 @@ const emptyForm: NewCustomerInput = {
   email: "",
   phone: "",
   type: "B2C",
+  town: "",
+  creditCode: "",
   competitorSpeedMbps: 100,
   competitorPrice: 0,
   assignedPlanId: "",
@@ -121,16 +124,42 @@ export function NewCustomerButton({ plans }: { plans: Plan[] }) {
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs text-muted">Tipo</label>
+              <select
+                value={form.type}
+                onChange={(e) => setForm({ ...form, type: e.target.value as "B2B" | "B2C" })}
+                className={selectClassName}
+              >
+                <option value="B2C">B2C</option>
+                <option value="B2B">B2B</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted">Pueblo</label>
+              <Input
+                list="pr-towns"
+                value={form.town}
+                onChange={(e) => setForm({ ...form, town: e.target.value })}
+                placeholder="Bayamón"
+              />
+              <datalist id="pr-towns">
+                {PR_TOWNS.map((town) => (
+                  <option key={town} value={town} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+
           <div>
-            <label className="mb-1 block text-xs text-muted">Tipo</label>
-            <select
-              value={form.type}
-              onChange={(e) => setForm({ ...form, type: e.target.value as "B2B" | "B2C" })}
-              className={selectClassName}
-            >
-              <option value="B2C">B2C</option>
-              <option value="B2B">B2B</option>
-            </select>
+            <label className="mb-1 block text-xs text-muted">Código de crédito (letras)</label>
+            <Input
+              value={form.creditCode}
+              onChange={(e) => setForm({ ...form, creditCode: e.target.value.toUpperCase() })}
+              placeholder="Ej. AB"
+              className="font-data uppercase"
+            />
           </div>
 
           <div className="rounded-lg border border-muted/20 bg-background/40 p-3">

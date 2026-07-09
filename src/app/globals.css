@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 @theme {
-  /* Design system — Project X */
-  --color-background: #0a0a0f;
-  --color-surface: #0e0e1a;
-  --color-primary: #7c3aed;
-  --color-success: #16a34a;
-  --color-warning: #ea580c;
-  --color-danger: #dc2626;
-  --color-foreground: #e8e8f0;
-  --color-muted: #6b6b8a;
+  /* Design system — Project X · Jarvis mode (HUD holográfico cian) */
+  --color-background: #04070d;
+  --color-surface: #0a1420;
+  --color-primary: #22d3ee;
+  --color-success: #2dd4bf;
+  --color-warning: #f59e0b;
+  --color-danger: #fb5e6a;
+  --color-foreground: #dbeafe;
+  --color-muted: #5f7e9c;
 
   --font-heading: var(--font-cinzel), serif;
   --font-data: var(--font-orbitron), monospace;
@@ -20,4 +20,17 @@ body {
   background-color: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-sans);
+  /* Retícula holográfica tenue de fondo */
+  background-image:
+    radial-gradient(circle at 15% 0%, rgba(34, 211, 238, 0.08), transparent 40%),
+    radial-gradient(circle at 85% 100%, rgba(34, 211, 238, 0.05), transparent 45%),
+    linear-gradient(rgba(34, 211, 238, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.025) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 44px 44px, 44px 44px;
+  background-attachment: fixed;
+}
+
+/* Datos/números en cian con leve glow, estilo HUD */
+.font-data {
+  text-shadow: 0 0 8px rgba(34, 211, 238, 0.25);
 }
