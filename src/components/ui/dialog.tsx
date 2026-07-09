@@ -19,7 +19,7 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
       aria-label={title}
     >
       <div
-        className="w-full max-w-lg rounded-xl border border-muted/30 bg-surface p-6 shadow-2xl"
+        className="hud-panel max-h-[90vh] w-full max-w-lg overflow-y-auto bg-surface p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-4 font-heading text-lg font-bold text-foreground">{title}</h2>

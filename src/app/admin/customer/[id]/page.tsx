@@ -64,14 +64,14 @@ export default async function CustomerDetailPage({
 
       {/* Datos, servicios contratados e instalación (venta ya cerrada) */}
       <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-xl border border-muted/20 bg-surface p-4">
+        <div className="hud-panel p-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
             Servicios contratados
           </p>
           <ServiceChips flags={planToServiceFlags(currentPlan)} size="md" />
         </div>
 
-        <div className="rounded-xl border border-muted/20 bg-surface p-4">
+        <div className="hud-panel p-4">
           <p className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-muted">
             <CalendarCheck size={13} /> Instalación
           </p>
@@ -82,7 +82,7 @@ export default async function CustomerDetailPage({
           )}
         </div>
 
-        <div className="rounded-xl border border-muted/20 bg-surface p-4">
+        <div className="hud-panel p-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Datos</p>
           <div className="space-y-1 text-sm">
             <p className="flex items-center gap-1.5 text-muted">

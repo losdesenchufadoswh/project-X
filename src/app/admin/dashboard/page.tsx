@@ -1,7 +1,13 @@
-import { ClientsTable, type DashboardRow } from "@/components/dashboard/ClientsTable";
 import { planToServiceFlags } from "@/components/customer/ServiceChips";
+import { ClientsTable, type DashboardRow } from "@/components/dashboard/ClientsTable";
+import {
+  HudSidePanels,
+  type MonthSaleItem,
+  type MonthUpsellItem,
+} from "@/components/dashboard/HudSidePanels";
 import { listCustomers } from "@/lib/db/customers";
 import { listPlans } from "@/lib/db/plans";
+import { listUpsellLogs } from "@/lib/db/upsells";
 import { findBestUpsell } from "@/lib/pricing/bundles";
 import { calculateSavings, calculateValueAdd } from "@/lib/pricing/calculator";
 import { formatMoney } from "@/lib/utils";
@@ -9,7 +15,11 @@ import { formatMoney } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const [customers, plans] = await Promise.all([listCustomers(), listPlans()]);
+  const [customers, plans, logs] = await Promise.all([
+    listCustomers(),
+    listPlans(),
+    listUpsellLogs(),
+  ]);
 
   const rows: DashboardRow[] = customers.map((customer) => {
     const currentPlan = plans.find((p) => p.id === customer.current_plan_id) ?? null;
@@ -45,10 +55,34 @@ export default async function DashboardPage() {
     0
   );
 
+  // ── Ventas del mes (clientes nuevos + upsells ejecutados este mes) ──
+  const monthKey = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+  const monthLabel = new Date().toLocaleDateString("es-PR", { month: "long", year: "numeric" });
+
+  const sales: MonthSaleItem[] = customers
+    .filter((c) => (c.signup_date ?? "").slice(0, 7) === monthKey)
+    .sort((a, b) => b.signup_date.localeCompare(a.signup_date))
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      planName: plans.find((p) => p.id === c.current_plan_id)?.name ?? c.current_plan_id,
+      date: c.signup_date,
+    }));
+
+  const monthUpsells: MonthUpsellItem[] = logs
+    .filter((log) => (log.executed_at ?? "").slice(0, 7) === monthKey)
+    .map((log) => ({
+      id: log.id,
+      customerName: log.customer_name,
+      toPlanName: log.to_plan_name,
+      savings: log.savings,
+      date: log.executed_at,
+    }));
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-heading text-2xl font-bold">Clientes Activos</h1>
+        <h1 className="hud-title font-heading text-2xl font-bold">Clientes Activos</h1>
         <p className="mt-1 text-sm text-muted">
           {rows.length} cliente{rows.length !== 1 ? "s" : ""} ·{" "}
           <span className="text-success">{withSuggestion} con oportunidad de upsell</span>
@@ -63,7 +97,23 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <ClientsTable rows={rows} plans={plans} />
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_330px]">
+        <div className="min-w-0">
+          <ClientsTable rows={rows} plans={plans} />
+        </div>
+
+        <HudSidePanels
+          monthLabel={monthLabel}
+          sales={sales}
+          upsells={monthUpsells}
+          stats={{
+            total: rows.length,
+            withUpsell: withSuggestion,
+            optimized: rows.length - withSuggestion,
+            withTv: rows.filter((r) => r.services.tv).length,
+          }}
+        />
+      </div>
     </div>
   );
 }
