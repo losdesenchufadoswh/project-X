@@ -32,6 +32,10 @@ export interface NewCustomerInput {
   competitorPrice: number;
   /** El plan NUESTRO que se le va a asignar (normalmente el recomendado, pero editable) */
   assignedPlanId: string;
+  /** Qué productos se agregaron EN ESTA VENTA — para la métrica mensual de Internet/Video/Voice */
+  addedInternet: boolean;
+  addedVideo: boolean;
+  addedVoice: boolean;
   notes: string;
 }
 
@@ -81,6 +85,10 @@ export async function createCustomerAction(input: NewCustomerInput): Promise<Act
     notes: "",
     notes_log: noteEntries,
     last_call: null,
+    // Solo cuenta para la métrica si nace con plan (venta real); un prospecto no agregó nada todavía
+    added_internet: planId ? input.addedInternet : false,
+    added_video: planId ? input.addedVideo : false,
+    added_voice: planId ? input.addedVoice : false,
     created_at: now,
     updated_at: now,
   });
@@ -91,7 +99,11 @@ export async function createCustomerAction(input: NewCustomerInput): Promise<Act
 
 /** Asigna el primer plan a un prospecto (lo convierte en venta). No pasa por upsell_log
  *  porque no es un cambio de plan, es la venta inicial — queda en la bitácora fechado. */
-export async function assignPlanAction(customerId: string, planId: string): Promise<ActionResult> {
+export async function assignPlanAction(
+  customerId: string,
+  planId: string,
+  addedProducts: { internet: boolean; video: boolean; voice: boolean }
+): Promise<ActionResult> {
   if (!(await requireAdminSession())) return { success: false, error: "No autorizado." };
 
   const [customer, plan] = await Promise.all([getCustomer(customerId), getPlan(planId)]);
@@ -111,6 +123,9 @@ export async function assignPlanAction(customerId: string, planId: string): Prom
     current_plan_id: plan.id,
     price_paying_now: plan.promo_price_2025,
     last_plan_change: now,
+    added_internet: addedProducts.internet,
+    added_video: addedProducts.video,
+    added_voice: addedProducts.voice,
     notes_log: [...(customer.notes_log ?? []), entry],
     updated_at: now,
   });

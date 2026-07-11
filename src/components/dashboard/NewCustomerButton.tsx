@@ -6,6 +6,8 @@ import { Plus } from "lucide-react";
 import { createCustomerAction, type NewCustomerInput } from "@/lib/actions/customers";
 import { COMPETITOR_SPEED_OPTIONS_MBPS, describePlan, findProspectOptions } from "@/lib/pricing/prospects";
 import { PR_TOWNS } from "@/lib/pr-towns";
+import { AddedProductsCheckboxes } from "@/components/customer/AddedProductsCheckboxes";
+import { planToServiceFlags } from "@/components/customer/ServiceChips";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -27,6 +29,9 @@ const emptyForm: NewCustomerInput = {
   competitorSpeedMbps: 100,
   competitorPrice: 0,
   assignedPlanId: "",
+  addedInternet: false,
+  addedVideo: false,
+  addedVoice: false,
   notes: "",
 };
 
@@ -42,6 +47,7 @@ export function NewCustomerButton({ plans }: { plans: Plan[] }) {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<NewCustomerInput>(emptyForm);
   const lastAutoPlanId = useRef("");
+  const lastProductsPlanId = useRef("");
 
   const { bestSavings, maxPlan } = useMemo(
     () => findProspectOptions(form.competitorSpeedMbps, form.competitorPrice, plans),
@@ -62,8 +68,26 @@ export function NewCustomerButton({ plans }: { plans: Plan[] }) {
     );
   }, [bestSavings, maxPlan, mode]);
 
+  // Pre-marca "qué agregó" según los servicios del plan elegido, cada vez que el plan cambia.
+  // El admin puede desmarcar/marcar después sin que esto lo vuelva a pisar.
+  useEffect(() => {
+    if (mode !== "sale") return;
+    if (!form.assignedPlanId || form.assignedPlanId === lastProductsPlanId.current) return;
+    lastProductsPlanId.current = form.assignedPlanId;
+    const plan = plans.find((p) => p.id === form.assignedPlanId);
+    if (!plan) return;
+    const flags = planToServiceFlags(plan);
+    setForm((prev) => ({
+      ...prev,
+      addedInternet: flags.internet,
+      addedVideo: flags.tv,
+      addedVoice: flags.phone,
+    }));
+  }, [form.assignedPlanId, mode, plans]);
+
   function openDialog() {
     lastAutoPlanId.current = "";
+    lastProductsPlanId.current = "";
     setModeState("sale");
     setForm(emptyForm);
     setError(null);
@@ -73,9 +97,16 @@ export function NewCustomerButton({ plans }: { plans: Plan[] }) {
   function switchMode(next: Mode) {
     setModeState(next);
     if (next === "prospect") {
-      // Prospecto: sin plan, sin recomendación
+      // Prospecto: sin plan, sin recomendación, sin productos
       lastAutoPlanId.current = "";
-      setForm((prev) => ({ ...prev, assignedPlanId: "" }));
+      lastProductsPlanId.current = "";
+      setForm((prev) => ({
+        ...prev,
+        assignedPlanId: "",
+        addedInternet: false,
+        addedVideo: false,
+        addedVoice: false,
+      }));
     } else {
       // Venta: re-aplica la recomendación actual
       const recommendedId = bestSavings?.id ?? maxPlan?.id ?? "";
@@ -92,8 +123,11 @@ export function NewCustomerButton({ plans }: { plans: Plan[] }) {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    // En modo prospecto nunca mandamos plan
-    const payload = mode === "prospect" ? { ...form, assignedPlanId: "" } : form;
+    // En modo prospecto nunca mandamos plan ni productos agregados
+    const payload =
+      mode === "prospect"
+        ? { ...form, assignedPlanId: "", addedInternet: false, addedVideo: false, addedVoice: false }
+        : form;
     startTransition(async () => {
       const result = await createCustomerAction(payload);
       if (result.success) {
@@ -325,6 +359,18 @@ export function NewCustomerButton({ plans }: { plans: Plan[] }) {
                   </p>
                 )}
               </div>
+
+              <AddedProductsCheckboxes
+                value={{ internet: form.addedInternet, video: form.addedVideo, voice: form.addedVoice }}
+                onChange={(v) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    addedInternet: v.internet,
+                    addedVideo: v.video,
+                    addedVoice: v.voice,
+                  }))
+                }
+              />
             </>
           )}
 

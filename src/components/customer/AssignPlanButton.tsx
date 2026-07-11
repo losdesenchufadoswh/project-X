@@ -4,6 +4,8 @@ import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { assignPlanAction } from "@/lib/actions/customers";
+import { AddedProductsCheckboxes, type AddedProducts } from "@/components/customer/AddedProductsCheckboxes";
+import { planToServiceFlags } from "@/components/customer/ServiceChips";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import type { Plan } from "@/types/plan";
@@ -22,17 +24,31 @@ export function AssignPlanButton({ customerId, customerName, plans }: AssignPlan
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [planId, setPlanId] = useState("");
+  const [addedProducts, setAddedProducts] = useState<AddedProducts>({
+    internet: false,
+    video: false,
+    voice: false,
+  });
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   const selected = plans.find((p) => p.id === planId) ?? null;
+
+  function selectPlan(id: string) {
+    setPlanId(id);
+    const plan = plans.find((p) => p.id === id);
+    if (!plan) return;
+    // Pre-marca según los servicios del plan; el admin puede ajustar antes de cerrar la venta
+    const flags = planToServiceFlags(plan);
+    setAddedProducts({ internet: flags.internet, video: flags.tv, voice: flags.phone });
+  }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!planId) return;
     setError(null);
     startTransition(async () => {
-      const result = await assignPlanAction(customerId, planId);
+      const result = await assignPlanAction(customerId, planId, addedProducts);
       if (result.success) {
         setOpen(false);
         router.refresh();
@@ -48,6 +64,7 @@ export function AssignPlanButton({ customerId, customerName, plans }: AssignPlan
         variant="success"
         onClick={() => {
           setPlanId("");
+          setAddedProducts({ internet: false, video: false, voice: false });
           setError(null);
           setOpen(true);
         }}
@@ -62,7 +79,7 @@ export function AssignPlanButton({ customerId, customerName, plans }: AssignPlan
             <label className="mb-1 block text-xs text-muted">Plan</label>
             <select
               value={planId}
-              onChange={(e) => setPlanId(e.target.value)}
+              onChange={(e) => selectPlan(e.target.value)}
               required
               className={selectClassName}
             >
@@ -85,6 +102,8 @@ export function AssignPlanButton({ customerId, customerName, plans }: AssignPlan
               </p>
             )}
           </div>
+
+          {planId && <AddedProductsCheckboxes value={addedProducts} onChange={setAddedProducts} />}
 
           {error && <p className="text-sm text-danger">{error}</p>}
 

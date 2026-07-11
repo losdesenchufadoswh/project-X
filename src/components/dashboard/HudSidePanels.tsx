@@ -1,6 +1,7 @@
 import { Activity, TrendingUp, UserPlus } from "lucide-react";
 import { HudGauge } from "@/components/hud/HudGauge";
 import { HudStatBar } from "@/components/hud/HudStatBar";
+import { SalesMetricsPanel, type SalesMetricsPanelProps } from "./SalesMetricsPanel";
 import { formatMoney } from "@/lib/utils";
 
 export interface MonthSaleItem {
@@ -30,6 +31,7 @@ interface HudSidePanelsProps {
   sales: MonthSaleItem[];
   upsells: MonthUpsellItem[];
   stats: SystemStats;
+  salesMetrics: SalesMetricsPanelProps;
 }
 
 function day(iso: string): string {
@@ -46,7 +48,13 @@ function PanelHeader({ icon: Icon, title }: { icon: typeof Activity; title: stri
 }
 
 /** Columna derecha del dashboard: ventas del mes, upsells ejecutados y "sistema" */
-export function HudSidePanels({ monthLabel, sales, upsells, stats }: HudSidePanelsProps) {
+export function HudSidePanels({
+  monthLabel,
+  sales,
+  upsells,
+  stats,
+  salesMetrics,
+}: HudSidePanelsProps) {
   return (
     <div className="space-y-4">
       <div className="hud-panel p-4">
@@ -73,6 +81,8 @@ export function HudSidePanels({ monthLabel, sales, upsells, stats }: HudSidePane
           </ul>
         )}
       </div>
+
+      <SalesMetricsPanel {...salesMetrics} />
 
       <div className="hud-panel p-4">
         <PanelHeader icon={TrendingUp} title="Upsells ejecutados" />

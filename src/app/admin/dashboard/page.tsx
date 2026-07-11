@@ -5,6 +5,7 @@ import {
   type MonthSaleItem,
   type MonthUpsellItem,
 } from "@/components/dashboard/HudSidePanels";
+import { SalesMetricsPanel } from "@/components/dashboard/SalesMetricsPanel";
 import { listCustomers } from "@/lib/db/customers";
 import { listPlans } from "@/lib/db/plans";
 import { listUpsellLogs } from "@/lib/db/upsells";
@@ -61,14 +62,21 @@ export default async function DashboardPage() {
   const monthKey = new Date().toISOString().slice(0, 7); // "YYYY-MM"
   const monthLabel = new Date().toLocaleDateString("es-PR", { month: "long", year: "numeric" });
 
-  const sales: MonthSaleItem[] = customers
-    .filter((c) => c.current_plan_id && (c.signup_date ?? "").slice(0, 7) === monthKey)
-    .sort((a, b) => b.signup_date.localeCompare(a.signup_date))
+  // Fecha real de la venta: si nació prospecto y se le asignó plan después, cuenta el mes de
+  // la asignación (last_plan_change), no el de creación del prospecto (signup_date).
+  const saleDate = (c: (typeof customers)[number]) => c.last_plan_change ?? c.signup_date;
+
+  const monthSaleCustomers = customers.filter(
+    (c) => c.current_plan_id && (saleDate(c) ?? "").slice(0, 7) === monthKey
+  );
+
+  const sales: MonthSaleItem[] = [...monthSaleCustomers]
+    .sort((a, b) => (saleDate(b) ?? "").localeCompare(saleDate(a) ?? ""))
     .map((c) => ({
       id: c.id,
       name: c.name,
       planName: plans.find((p) => p.id === c.current_plan_id)?.name ?? c.current_plan_id,
-      date: c.signup_date,
+      date: saleDate(c) ?? c.signup_date,
     }));
 
   const monthUpsells: MonthUpsellItem[] = logs
@@ -80,6 +88,13 @@ export default async function DashboardPage() {
       savings: log.savings,
       date: log.executed_at,
     }));
+
+  // Desglose de productos agregados este mes (Internet/Video cuentan para meta; Voice es bono)
+  const salesMetrics = {
+    internetCount: monthSaleCustomers.filter((c) => c.added_internet).length,
+    videoCount: monthSaleCustomers.filter((c) => c.added_video).length,
+    voiceCount: monthSaleCustomers.filter((c) => c.added_voice).length,
+  };
 
   return (
     <div className="space-y-6">
@@ -108,6 +123,7 @@ export default async function DashboardPage() {
           monthLabel={monthLabel}
           sales={sales}
           upsells={monthUpsells}
+          salesMetrics={salesMetrics}
           stats={{
             total: rows.length,
             withUpsell: withSuggestion,

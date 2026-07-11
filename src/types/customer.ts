@@ -40,6 +40,10 @@ export interface Customer {
   notes_log?: CustomerNote[];
   /** Resultado de la última llamada al cliente */
   last_call?: LastCall | null;
+  /** Qué productos se agregaron EN ESTA VENTA (para métrica mensual) — no es lo que el plan incluye */
+  added_internet?: boolean;
+  added_video?: boolean;
+  added_voice?: boolean;
   created_at: string;
   updated_at: string;
 }
