@@ -66,3 +66,27 @@ export function describePlan(plan: Plan): string {
 }
 
 export const COMPETITOR_SPEED_OPTIONS_MBPS = [50, 100, 200, 300, 500, 1000];
+
+function hasCableTv(plan: Plan): boolean {
+  return plan.services.some((s) => s.type === "cable_tv" && s.included);
+}
+
+/**
+ * Prospecto sin Internet que hoy solo paga por TV/cable con otro proveedor.
+ * Recomienda el plan con TV más barato que ya le gane ese precio (normalmente
+ * un bundle con Internet incluido) — así se le muestra que gana Internet gratis
+ * pagando lo mismo o menos.
+ */
+export function findTvOnlyProspectOptions(
+  competitorPrice: number,
+  allPlans: Plan[]
+): DualProspectOptions {
+  const eligible = allPlans.filter((plan) => !plan.is_specialty && hasCableTv(plan)).sort(rankBySavings);
+
+  const bestSavings =
+    competitorPrice > 0 ? eligible.filter((plan) => plan.promo_price_2025 <= competitorPrice)[0] ?? null : null;
+  const topMax = eligible[0] ?? null;
+  const maxPlan = topMax && topMax.id !== bestSavings?.id ? topMax : null;
+
+  return { bestSavings, maxPlan };
+}

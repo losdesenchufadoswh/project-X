@@ -26,6 +26,8 @@ export interface NewCustomerInput {
   town: string;
   /** Código de crédito por letras */
   creditCode: string;
+  /** Si el prospecto YA tiene Internet hoy con otro proveedor (false = solo TV/cable, sin Internet) */
+  hasInternetToday: boolean;
   /** Velocidad que el prospecto tiene HOY con otro proveedor (Mbps) — solo para calcular la recomendación */
   competitorSpeedMbps: number;
   /** Precio que el prospecto paga HOY con otro proveedor — solo para calcular la recomendación */
@@ -60,11 +62,11 @@ export async function createCustomerAction(input: NewCustomerInput): Promise<Act
 
   // Todas las notas nacen fechadas en la bitácora
   const noteEntries: CustomerNote[] = [];
-  if (planId && input.competitorSpeedMbps > 0 && input.competitorPrice > 0) {
-    noteEntries.push({
-      text: `Antes pagaba $${input.competitorPrice.toFixed(2)} por ${input.competitorSpeedMbps} Mbps con otro proveedor.`,
-      created_at: now,
-    });
+  if (planId && input.competitorPrice > 0) {
+    const competitorText = input.hasInternetToday
+      ? `Antes pagaba $${input.competitorPrice.toFixed(2)} por ${input.competitorSpeedMbps} Mbps con otro proveedor.`
+      : `Antes pagaba $${input.competitorPrice.toFixed(2)} por TV/cable con otro proveedor (sin Internet).`;
+    noteEntries.push({ text: competitorText, created_at: now });
   }
   if (input.notes.trim()) {
     noteEntries.push({ text: input.notes.trim(), created_at: now });

@@ -12,6 +12,7 @@ import { listUpsellLogs } from "@/lib/db/upsells";
 import { findBestUpsell } from "@/lib/pricing/bundles";
 import { calculateSavings, calculateValueAdd } from "@/lib/pricing/calculator";
 import { formatMoney } from "@/lib/utils";
+import { computeWeeklyGoal } from "@/lib/weekly-goal";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,15 @@ export default async function DashboardPage() {
     voiceCount: monthSaleCustomers.filter((c) => c.added_voice).length,
   };
 
+  // Una fecha por cada unidad (Internet o Video) agregada, para repartir la meta por semana
+  const saleUnitDates: string[] = [];
+  for (const c of monthSaleCustomers) {
+    const date = saleDate(c) ?? c.signup_date;
+    if (c.added_internet) saleUnitDates.push(date);
+    if (c.added_video) saleUnitDates.push(date);
+  }
+  const weeklyGoal = computeWeeklyGoal(saleUnitDates, new Date());
+
   return (
     <div className="space-y-6">
       <div>
@@ -123,7 +133,7 @@ export default async function DashboardPage() {
           monthLabel={monthLabel}
           sales={sales}
           upsells={monthUpsells}
-          salesMetrics={salesMetrics}
+          salesMetrics={{ ...salesMetrics, weeks: weeklyGoal }}
           stats={{
             total: rows.length,
             withUpsell: withSuggestion,

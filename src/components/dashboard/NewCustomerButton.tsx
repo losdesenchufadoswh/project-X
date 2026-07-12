@@ -4,7 +4,12 @@ import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } f
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { createCustomerAction, type NewCustomerInput } from "@/lib/actions/customers";
-import { COMPETITOR_SPEED_OPTIONS_MBPS, describePlan, findProspectOptions } from "@/lib/pricing/prospects";
+import {
+  COMPETITOR_SPEED_OPTIONS_MBPS,
+  describePlan,
+  findProspectOptions,
+  findTvOnlyProspectOptions,
+} from "@/lib/pricing/prospects";
 import { PR_TOWNS } from "@/lib/pr-towns";
 import { AddedProductsCheckboxes } from "@/components/customer/AddedProductsCheckboxes";
 import { planToServiceFlags } from "@/components/customer/ServiceChips";
@@ -26,6 +31,7 @@ const emptyForm: NewCustomerInput = {
   type: "B2C",
   town: "",
   creditCode: "",
+  hasInternetToday: true,
   competitorSpeedMbps: 100,
   competitorPrice: 0,
   assignedPlanId: "",
@@ -50,8 +56,11 @@ export function NewCustomerButton({ plans }: { plans: Plan[] }) {
   const lastProductsPlanId = useRef("");
 
   const { bestSavings, maxPlan } = useMemo(
-    () => findProspectOptions(form.competitorSpeedMbps, form.competitorPrice, plans),
-    [form.competitorSpeedMbps, form.competitorPrice, plans]
+    () =>
+      form.hasInternetToday
+        ? findProspectOptions(form.competitorSpeedMbps, form.competitorPrice, plans)
+        : findTvOnlyProspectOptions(form.competitorPrice, plans),
+    [form.hasInternetToday, form.competitorSpeedMbps, form.competitorPrice, plans]
   );
 
   // Auto-asigna la mejor opción (solo en modo venta), pero deja de tocarla en cuanto el admin
@@ -140,7 +149,9 @@ export function NewCustomerButton({ plans }: { plans: Plan[] }) {
   }
 
   const assignedPlan = plans.find((p) => p.id === form.assignedPlanId) ?? null;
-  const competitorLabel = `${speedLabel(form.competitorSpeedMbps)} (otro proveedor)`;
+  const competitorLabel = form.hasInternetToday
+    ? `${speedLabel(form.competitorSpeedMbps)} (otro proveedor)`
+    : "TV/cable, sin Internet (otro proveedor)";
 
   const modeTab = (value: Mode, label: string, hint: string) => {
     const active = mode === value;
@@ -248,25 +259,67 @@ export function NewCustomerButton({ plans }: { plans: Plan[] }) {
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
                   Lo que tiene hoy (con otro proveedor)
                 </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-xs text-muted">Internet actual</label>
-                    <select
-                      value={form.competitorSpeedMbps}
-                      onChange={(e) =>
-                        setForm({ ...form, competitorSpeedMbps: Number(e.target.value) })
-                      }
-                      className={selectClassName}
-                    >
-                      {COMPETITOR_SPEED_OPTIONS_MBPS.map((mbps) => (
-                        <option key={mbps} value={mbps}>
-                          {speedLabel(mbps)}
-                        </option>
-                      ))}
-                    </select>
+
+                <div className="mb-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, hasInternetToday: true })}
+                    className={`flex-1 rounded-lg border px-2 py-1.5 text-xs transition ${
+                      form.hasInternetToday
+                        ? "border-primary bg-primary/15 text-primary"
+                        : "border-muted/30 text-muted hover:border-primary/60 hover:text-foreground"
+                    }`}
+                  >
+                    Tiene Internet
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, hasInternetToday: false })}
+                    className={`flex-1 rounded-lg border px-2 py-1.5 text-xs transition ${
+                      !form.hasInternetToday
+                        ? "border-primary bg-primary/15 text-primary"
+                        : "border-muted/30 text-muted hover:border-primary/60 hover:text-foreground"
+                    }`}
+                  >
+                    Solo TV / sin Internet
+                  </button>
+                </div>
+
+                {form.hasInternetToday ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs text-muted">Internet actual</label>
+                      <select
+                        value={form.competitorSpeedMbps}
+                        onChange={(e) =>
+                          setForm({ ...form, competitorSpeedMbps: Number(e.target.value) })
+                        }
+                        className={selectClassName}
+                      >
+                        {COMPETITOR_SPEED_OPTIONS_MBPS.map((mbps) => (
+                          <option key={mbps} value={mbps}>
+                            {speedLabel(mbps)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-muted">Paga hoy ($)</label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={form.competitorPrice || ""}
+                        onChange={(e) =>
+                          setForm({ ...form, competitorPrice: Number(e.target.value) })
+                        }
+                        placeholder="50.00"
+                      />
+                    </div>
                   </div>
+                ) : (
                   <div>
-                    <label className="mb-1 block text-xs text-muted">Paga hoy ($)</label>
+                    <label className="mb-1 block text-xs text-muted">Paga hoy por TV/cable ($)</label>
                     <Input
                       type="number"
                       min={0}
@@ -275,15 +328,16 @@ export function NewCustomerButton({ plans }: { plans: Plan[] }) {
                       onChange={(e) =>
                         setForm({ ...form, competitorPrice: Number(e.target.value) })
                       }
-                      placeholder="50.00"
+                      placeholder="100.00"
                     />
                   </div>
-                </div>
+                )}
 
                 {form.competitorPrice > 0 && !bestSavings && !maxPlan && (
                   <p className="mt-3 text-xs text-muted">
-                    No tenemos un plan que le gane esa velocidad todavía — asigna uno manualmente
-                    abajo.
+                    {form.hasInternetToday
+                      ? "No tenemos un plan que le gane esa velocidad todavía — asigna uno manualmente abajo."
+                      : "No tenemos un plan con TV más barato que eso todavía — asigna uno manualmente abajo."}
                   </p>
                 )}
 
