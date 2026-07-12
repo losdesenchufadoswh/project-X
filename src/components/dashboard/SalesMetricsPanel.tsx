@@ -15,10 +15,7 @@ export function SalesMetricsPanel({ internetCount, videoCount, voiceCount, weeks
   const total = internetCount + videoCount;
   const metGoal = total >= MONTHLY_TOTAL_GOAL;
   const metInternetGoal = internetCount >= MONTHLY_INTERNET_GOAL;
-  const current = weeks[weeks.length - 1];
   const pastWeeks = weeks.slice(0, -1);
-  const currentPct =
-    current && current.target > 0 ? Math.min((current.actual / current.target) * 100, 100) : 100;
 
   return (
     <div className="hud-panel p-4">
@@ -74,38 +71,21 @@ export function SalesMetricsPanel({ internetCount, videoCount, voiceCount, weeks
           )}
         </div>
 
-        {current && (
+        {pastWeeks.length > 0 && (
           <div className="border-t border-primary/15 pt-3">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted">Meta semana {current.weekNumber}</span>
-              <span className={`font-data ${current.met ? "text-success" : "text-primary"}`}>
-                {current.actual} / {current.target}
-              </span>
+            <p className="mb-1.5 text-[10px] uppercase tracking-wider text-muted">Semanas anteriores</p>
+            <div className="flex flex-wrap gap-1.5">
+              {pastWeeks.map((w) => (
+                <span
+                  key={w.weekNumber}
+                  className={`rounded px-1.5 py-0.5 font-data text-[10px] ${
+                    w.met ? "bg-success/15 text-success" : "bg-danger/15 text-danger"
+                  }`}
+                >
+                  S{w.weekNumber}: {w.actual}/{w.target}
+                </span>
+              ))}
             </div>
-            <div className="mt-1 h-1.5 w-full bg-primary/10">
-              <div
-                className={`h-full transition-all ${
-                  current.met
-                    ? "bg-success shadow-[0_0_8px_rgba(47,230,183,0.7)]"
-                    : "bg-primary shadow-[0_0_8px_rgba(47,157,255,0.7)]"
-                }`}
-                style={{ width: `${currentPct}%` }}
-              />
-            </div>
-            {pastWeeks.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {pastWeeks.map((w) => (
-                  <span
-                    key={w.weekNumber}
-                    className={`rounded px-1.5 py-0.5 font-data text-[10px] ${
-                      w.met ? "bg-success/15 text-success" : "bg-danger/15 text-danger"
-                    }`}
-                  >
-                    S{w.weekNumber}: {w.actual}/{w.target}
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
         )}
 

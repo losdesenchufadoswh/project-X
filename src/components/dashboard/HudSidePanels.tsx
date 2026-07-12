@@ -55,13 +55,19 @@ export function HudSidePanels({
   stats,
   salesMetrics,
 }: HudSidePanelsProps) {
+  const currentWeek = salesMetrics.weeks[salesMetrics.weeks.length - 1];
+
   return (
     <div className="space-y-4">
       <div className="hud-panel p-4">
         <PanelHeader icon={UserPlus} title={`Ventas del mes — ${monthLabel}`} />
 
         <div className="mb-4 flex justify-around">
-          <HudGauge value={sales.length} max={10} label="Ventas" />
+          <HudGauge
+            value={currentWeek?.actual ?? 0}
+            max={currentWeek?.target || 1}
+            label={currentWeek ? `Semana ${currentWeek.weekNumber}` : "Semana"}
+          />
           <HudGauge value={upsells.length} max={40} label="Upsells" />
         </div>
 
