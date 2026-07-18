@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { History, LayoutDashboard, ListChecks, LogOut, Smartphone } from "lucide-react";
+import { History, LayoutDashboard, ListChecks, LogOut, Smartphone, Phone } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 
 const items = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard, soon: false },
   { href: "/admin/history", label: "Historial", icon: History, soon: false },
   { href: "/admin/plans", label: "Planes", icon: ListChecks, soon: false },
+  { href: "/admin/telco", label: "Servicios", icon: Phone, soon: false },
   { href: "/admin/mobile", label: "Celular", icon: Smartphone, soon: true },
 ];
 
