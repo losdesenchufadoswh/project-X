@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Trash2, Phone, MessageSquare } from "lucide-react";
+import { Copy, Trash2, Phone, MessageSquare, X } from "lucide-react";
 import { telcoRegistros, countActive } from "@/lib/telco-data";
 
 const registros = telcoRegistros;
@@ -13,6 +13,7 @@ type RegistroData = { llamadas: CallRecord[]; notas: NoteRecord[] };
 export default function TelcoPage() {
   const [data, setData] = useState<Record<string, RegistroData>>({});
   const [discarded, setDiscarded] = useState<Set<string>>(new Set());
+  const [deleted, setDeleted] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("todos");
   const [page, setPage] = useState(0);
   const [selectedTab, setSelectedTab] = useState<"parciales" | "completos" | "inactivos" | "descartados">("parciales");
@@ -24,8 +25,10 @@ export default function TelcoPage() {
   useEffect(() => {
     const stored = localStorage.getItem("telco-data");
     const storedDiscarded = localStorage.getItem("telco-discarded");
+    const storedDeleted = localStorage.getItem("telco-deleted");
     if (stored) setData(JSON.parse(stored));
     if (storedDiscarded) setDiscarded(new Set(JSON.parse(storedDiscarded)));
+    if (storedDeleted) setDeleted(new Set(JSON.parse(storedDeleted)));
   }, []);
 
   useEffect(() => {
@@ -36,6 +39,10 @@ export default function TelcoPage() {
     localStorage.setItem("telco-discarded", JSON.stringify([...discarded]));
   }, [discarded]);
 
+  useEffect(() => {
+    localStorage.setItem("telco-deleted", JSON.stringify([...deleted]));
+  }, [deleted]);
+
   const getRegistrosByTab = () => {
     const active: string[] = [];
     const parcial: string[] = [];
@@ -43,7 +50,7 @@ export default function TelcoPage() {
 
     registros.forEach((r, i) => {
       const id = r[1];
-      if (discarded.has(id)) return;
+      if (deleted.has(id) || discarded.has(id)) return;
       const count = countActive(r[4], r[5], r[6]);
       if (count === 3) active.push(id);
       else if (count > 0) parcial.push(id);
@@ -51,7 +58,7 @@ export default function TelcoPage() {
     });
 
     if (selectedTab === "descartados") {
-      return registros.filter((r) => discarded.has(r[1])).map((r) => r[1]);
+      return registros.filter((r) => discarded.has(r[1]) && !deleted.has(r[1])).map((r) => r[1]);
     }
     if (selectedTab === "completos") return active;
     if (selectedTab === "inactivos") return inactivo;
@@ -94,7 +101,6 @@ export default function TelcoPage() {
       },
     }));
     setNoteInput("");
-    setModalOpen(null);
   };
 
   const copyToClipboard = async (id: string) => {
@@ -115,11 +121,39 @@ export default function TelcoPage() {
     });
   };
 
+  const handleDelete = (id: string) => {
+    if (!confirm("¿Borrar este registro permanentemente del app? No se puede recuperar.")) return;
+    setDeleted((prev) => new Set(prev).add(id));
+    setDiscarded((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const handleDeleteNote = (id: string, index: number) => {
+    setData((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], notas: (prev[id]?.notas || []).filter((_, i) => i !== index) },
+    }));
+  };
+
+  const handleDeleteCall = (id: string, index: number) => {
+    setData((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], llamadas: (prev[id]?.llamadas || []).filter((_, i) => i !== index) },
+    }));
+  };
+
+  const available = (r: (typeof registros)[number]) => !deleted.has(r[1]) && !discarded.has(r[1]);
   const counts = {
-    parciales: registros.filter((r) => !discarded.has(r[1]) && countActive(r[4], r[5], r[6]) === 1 || countActive(r[4], r[5], r[6]) === 2).length,
-    completos: registros.filter((r) => !discarded.has(r[1]) && countActive(r[4], r[5], r[6]) === 3).length,
-    inactivos: registros.filter((r) => !discarded.has(r[1]) && countActive(r[4], r[5], r[6]) === 0).length,
-    descartados: discarded.size,
+    parciales: registros.filter((r) => {
+      const c = countActive(r[4], r[5], r[6]);
+      return available(r) && (c === 1 || c === 2);
+    }).length,
+    completos: registros.filter((r) => available(r) && countActive(r[4], r[5], r[6]) === 3).length,
+    inactivos: registros.filter((r) => available(r) && countActive(r[4], r[5], r[6]) === 0).length,
+    descartados: [...discarded].filter((id) => !deleted.has(id)).length,
   };
 
   const renderStatus = (status: string) => {
@@ -233,16 +267,26 @@ export default function TelcoPage() {
                       </button>
                     </td>
                     <td className="py-3 px-2 text-center">
-                      <button
-                        onClick={() => handleDiscard(id)}
-                        className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded transition ${
-                          discarded.has(id)
-                            ? "bg-success/15 text-success hover:bg-success/25"
-                            : "bg-danger/15 text-danger hover:bg-danger/25"
-                        }`}
-                      >
-                        <Trash2 size={12} />
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => handleDiscard(id)}
+                          title={discarded.has(id) ? "Recuperar" : "Descartar"}
+                          className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded transition ${
+                            discarded.has(id)
+                              ? "bg-success/15 text-success hover:bg-success/25"
+                              : "bg-warning/15 text-warning hover:bg-warning/25"
+                          }`}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(id)}
+                          title="Borrar permanentemente"
+                          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-danger/15 text-danger hover:bg-danger/30 transition"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -294,6 +338,29 @@ export default function TelcoPage() {
             {modalOpen.type === "call" ? (
               <>
                 <h2 className="font-semibold mb-4 text-primary">Registrar Llamada</h2>
+                {(data[modalOpen.id]?.llamadas?.length ?? 0) > 0 && (
+                  <div className="mb-4 max-h-40 overflow-y-auto space-y-1.5 border-b border-primary/15 pb-3">
+                    {data[modalOpen.id].llamadas.map((c, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between gap-2 text-xs bg-background/50 rounded px-2 py-1.5"
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className={c.estado === "answered" ? "text-success" : "text-warning"}>●</span>
+                          <span className="font-data">{c.fecha} {c.hora}</span>
+                          <span className="text-muted">{c.estado === "answered" ? "Contestó" : "No contestó"}</span>
+                        </span>
+                        <button
+                          onClick={() => handleDeleteCall(modalOpen.id, i)}
+                          className="text-muted hover:text-danger"
+                          title="Borrar llamada"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs text-muted mb-1">Fecha</label>
@@ -347,7 +414,28 @@ export default function TelcoPage() {
               </>
             ) : (
               <>
-                <h2 className="font-semibold mb-4 text-primary">Agregar Nota</h2>
+                <h2 className="font-semibold mb-4 text-primary">Notas</h2>
+                {(data[modalOpen.id]?.notas?.length ?? 0) > 0 ? (
+                  <div className="mb-4 max-h-48 overflow-y-auto space-y-2 border-b border-primary/15 pb-3">
+                    {data[modalOpen.id].notas.map((n, i) => (
+                      <div key={i} className="flex items-start justify-between gap-2 bg-background/50 rounded px-2 py-2">
+                        <div className="flex-1">
+                          <p className="text-sm whitespace-pre-wrap break-words">{n.texto}</p>
+                          <p className="mt-1 font-data text-[10px] text-muted">{n.fecha}</p>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteNote(modalOpen.id, i)}
+                          className="text-muted hover:text-danger shrink-0"
+                          title="Borrar nota"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mb-4 text-xs text-muted">Aún no hay notas. Escribe la primera abajo.</p>
+                )}
                 <div className="space-y-3">
                   <textarea
                     value={noteInput}
@@ -360,13 +448,13 @@ export default function TelcoPage() {
                       onClick={() => setModalOpen(null)}
                       className="flex-1 px-3 py-1.5 rounded border border-muted/30 hover:border-primary/60 text-sm"
                     >
-                      Cancelar
+                      Cerrar
                     </button>
                     <button
                       onClick={() => handleAddNote(modalOpen.id)}
                       className="flex-1 px-3 py-1.5 rounded bg-primary text-foreground hover:bg-primary/80 text-sm"
                     >
-                      Guardar
+                      Agregar
                     </button>
                   </div>
                 </div>
