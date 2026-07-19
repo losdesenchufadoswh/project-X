@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Trash2, Phone, MessageSquare, X } from "lucide-react";
+import { Copy, Trash2, Phone, MessageSquare, X, Star } from "lucide-react";
 import { telcoRegistros, countActive } from "@/lib/telco-data";
 
 const registros = telcoRegistros;
@@ -15,6 +15,7 @@ export default function TelcoPage() {
   const [discarded, setDiscarded] = useState<Set<string>>(new Set());
   const [deleted, setDeleted] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("todos");
+  const [starOnly, setStarOnly] = useState(false);
   const [page, setPage] = useState(0);
   const [selectedTab, setSelectedTab] = useState<"parciales" | "completos" | "inactivos" | "descartados">("parciales");
   const [modalOpen, setModalOpen] = useState<{ type: "call" | "note"; id: string } | null>(null);
@@ -65,13 +66,16 @@ export default function TelcoPage() {
     return parcial;
   };
 
+  // Candidato para añadir: no tiene los 3 servicios activos → hay algo que venderle
+  const canAddMore = (r: (typeof registros)[number]) => countActive(r[4], r[5], r[6]) < 3;
+
   const filtered = getRegistrosByTab().filter((id) => {
-    if (filter === "todos") return true;
     const r = registros.find((x) => x[1] === id)!;
     const count = countActive(r[4], r[5], r[6]);
-    if (filter === "1") return count === 1;
-    if (filter === "2") return count === 2;
-    return false;
+    if (starOnly && !canAddMore(r)) return false;
+    if (filter === "1" && count !== 1) return false;
+    if (filter === "2" && count !== 2) return false;
+    return true;
   });
 
   const paginated = filtered.slice(page * 10, (page + 1) * 10);
@@ -154,6 +158,7 @@ export default function TelcoPage() {
     completos: registros.filter((r) => available(r) && countActive(r[4], r[5], r[6]) === 3).length,
     inactivos: registros.filter((r) => available(r) && countActive(r[4], r[5], r[6]) === 0).length,
     descartados: [...discarded].filter((id) => !deleted.has(id)).length,
+    candidatos: registros.filter((r) => available(r) && countActive(r[4], r[5], r[6]) > 0 && countActive(r[4], r[5], r[6]) < 3).length,
   };
 
   const renderStatus = (status: string) => {
@@ -168,7 +173,8 @@ export default function TelcoPage() {
         <h1 className="hud-title font-heading text-2xl font-bold mb-1">Servicios Telefónicos</h1>
         <p className="text-sm text-muted mb-6">
           {counts.parciales} Parciales · {counts.completos} Completos · {counts.inactivos} Inactivos ·{" "}
-          <span className="text-danger">{counts.descartados} Descartados</span>
+          <span className="text-danger">{counts.descartados} Descartados</span> ·{" "}
+          <span className="text-warning">⭐ {counts.candidatos} con oportunidad</span>
         </p>
 
         <div className="flex gap-2 mb-6 border-b border-primary/20">
@@ -190,8 +196,22 @@ export default function TelcoPage() {
           ))}
         </div>
 
-        {filter !== "todos" && selectedTab !== "descartados" && (
-          <div className="mb-4">
+        {selectedTab !== "descartados" && (
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => {
+                setStarOnly((v) => !v);
+                setPage(0);
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${
+                starOnly
+                  ? "border-warning bg-warning/15 text-warning"
+                  : "border-muted/30 bg-surface text-muted hover:border-warning/60 hover:text-warning"
+              }`}
+            >
+              <Star size={14} className={starOnly ? "fill-warning" : ""} />
+              Solo con oportunidad
+            </button>
             <select
               value={filter}
               onChange={(e) => {
@@ -234,7 +254,18 @@ export default function TelcoPage() {
                 return (
                   <tr key={id} className="border-b border-primary/10 hover:bg-primary/5 transition">
                     <td className="py-3 px-2 font-data text-muted">{rowNum}</td>
-                    <td className="py-3 px-2 text-xs">{r[0]}</td>
+                    <td className="py-3 px-2 text-xs">
+                      <span className="flex items-center gap-1.5">
+                        {canAddMore(r) && (
+                          <Star
+                            size={13}
+                            className="fill-warning text-warning shrink-0"
+                            aria-label="Se le puede añadir un servicio"
+                          />
+                        )}
+                        {r[0]}
+                      </span>
+                    </td>
                     <td className="py-3 px-2">
                       <button
                         onClick={() => copyToClipboard(id)}
