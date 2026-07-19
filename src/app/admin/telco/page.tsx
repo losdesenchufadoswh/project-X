@@ -2,27 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { Copy, Trash2, Phone, MessageSquare } from "lucide-react";
+import { telcoRegistros, countActive } from "@/lib/telco-data";
 
-const registros = [
-  ["BO BARRANCAS HATO ABAJO, CARR 653 KM 2.0, ARECIBO", "00612000203861", "AR003", "COAX", "ACTIVE", "ACTIVE", "ACTIVE"],
-  ["BO HATO ABAJO, 1 ALTURAS DE ATLANTICO, ARECIBO", "00612000449266", "AR21AR01", "FIBER", "NEVER", "NEVER", "NEVER"],
-  ["BO HATO ABAJO, 1 CALLE ARISTO, ARECIBO", "00612000448474", "AR21AR01", "FIBER", "ACTIVE", "ACTIVE", "ACTIVE"],
-  ["BO HATO ABAJO, 1 CALLE SAN DANIEL, ARECIBO", "00612000476699", "AR15AR01", "FIBER", "NEVER", "NEVER", "NEVER"],
-  ["BO HATO ABAJO, 1 CARR 492 KM 5.1, ARECIBO", "00612000396566", "AR004A", "COAX", "NEVER", "DISCO", "DISCO"],
-  ["BO HATO ABAJO, 1 CALLE SAN DANIEL, ARECIBO", "00612000448193", "AR21AR01", "FIBER", "NEVER", "NEVER", "NEVER"],
-  ["BO HATO ABAJO, 1 PASEO LOS HUCARES, ARECIBO", "00612000448268", "AR21AR01", "FIBER", "ACTIVE", "ACTIVE", "ACTIVE"],
-  ["BO HATO ABAJO, 10 ALTURAS DE ATLANTICO, ARECIBO", "00612000449324", "AR21AR01", "FIBER", "NEVER", "NEVER", "NEVER"],
-  ["BO HATO ABAJO, 10 CALLE FLAMINGO, ARECIBO", "00612000366601", "AR004A", "COAX", "DISCO", "DISCO", "DISCO"],
-  ["BO HATO ABAJO, 10 CARR 653 KM 3.3 INT, ARECIBO", "00612000450157", "AR21AR01", "FIBER", "NEVER", "NEVER", "NEVER"],
-];
+const registros = telcoRegistros;
 
 type CallRecord = { fecha: string; hora: string; estado: "answered" | "missed" };
 type NoteRecord = { texto: string; fecha: string };
 type RegistroData = { llamadas: CallRecord[]; notas: NoteRecord[] };
-
-const countActive = (video: string, internet: string, voice: string): number => {
-  return (video === "ACTIVE" ? 1 : 0) + (internet === "ACTIVE" ? 1 : 0) + (voice === "ACTIVE" ? 1 : 0);
-};
 
 export default function TelcoPage() {
   const [data, setData] = useState<Record<string, RegistroData>>({});
