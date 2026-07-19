@@ -14,6 +14,7 @@ export default function TelcoPage() {
   const [data, setData] = useState<Record<string, RegistroData>>({});
   const [discarded, setDiscarded] = useState<Set<string>>(new Set());
   const [deleted, setDeleted] = useState<Set<string>>(new Set());
+  const [starred, setStarred] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("todos");
   const [starOnly, setStarOnly] = useState(false);
   const [page, setPage] = useState(0);
@@ -27,9 +28,11 @@ export default function TelcoPage() {
     const stored = localStorage.getItem("telco-data");
     const storedDiscarded = localStorage.getItem("telco-discarded");
     const storedDeleted = localStorage.getItem("telco-deleted");
+    const storedStarred = localStorage.getItem("telco-starred");
     if (stored) setData(JSON.parse(stored));
     if (storedDiscarded) setDiscarded(new Set(JSON.parse(storedDiscarded)));
     if (storedDeleted) setDeleted(new Set(JSON.parse(storedDeleted)));
+    if (storedStarred) setStarred(new Set(JSON.parse(storedStarred)));
   }, []);
 
   useEffect(() => {
@@ -43,6 +46,10 @@ export default function TelcoPage() {
   useEffect(() => {
     localStorage.setItem("telco-deleted", JSON.stringify([...deleted]));
   }, [deleted]);
+
+  useEffect(() => {
+    localStorage.setItem("telco-starred", JSON.stringify([...starred]));
+  }, [starred]);
 
   const getRegistrosByTab = () => {
     const active: string[] = [];
@@ -66,13 +73,10 @@ export default function TelcoPage() {
     return parcial;
   };
 
-  // Candidato para añadir: no tiene los 3 servicios activos → hay algo que venderle
-  const canAddMore = (r: (typeof registros)[number]) => countActive(r[4], r[5], r[6]) < 3;
-
   const filtered = getRegistrosByTab().filter((id) => {
     const r = registros.find((x) => x[1] === id)!;
     const count = countActive(r[4], r[5], r[6]);
-    if (starOnly && !canAddMore(r)) return false;
+    if (starOnly && !starred.has(id)) return false;
     if (filter === "1" && count !== 1) return false;
     if (filter === "2" && count !== 2) return false;
     return true;
@@ -125,6 +129,15 @@ export default function TelcoPage() {
     });
   };
 
+  const handleStar = (id: string) => {
+    setStarred((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const handleDelete = (id: string) => {
     if (!confirm("¿Borrar este registro permanentemente del app? No se puede recuperar.")) return;
     setDeleted((prev) => new Set(prev).add(id));
@@ -158,7 +171,7 @@ export default function TelcoPage() {
     completos: registros.filter((r) => available(r) && countActive(r[4], r[5], r[6]) === 3).length,
     inactivos: registros.filter((r) => available(r) && countActive(r[4], r[5], r[6]) === 0).length,
     descartados: [...discarded].filter((id) => !deleted.has(id)).length,
-    candidatos: registros.filter((r) => available(r) && countActive(r[4], r[5], r[6]) > 0 && countActive(r[4], r[5], r[6]) < 3).length,
+    marcados: [...starred].filter((id) => !deleted.has(id)).length,
   };
 
   const renderStatus = (status: string) => {
@@ -174,7 +187,7 @@ export default function TelcoPage() {
         <p className="text-sm text-muted mb-6">
           {counts.parciales} Parciales · {counts.completos} Completos · {counts.inactivos} Inactivos ·{" "}
           <span className="text-danger">{counts.descartados} Descartados</span> ·{" "}
-          <span className="text-warning">⭐ {counts.candidatos} con oportunidad</span>
+          <span className="text-warning">⭐ {counts.marcados} marcados</span>
         </p>
 
         <div className="flex gap-2 mb-6 border-b border-primary/20">
@@ -210,7 +223,7 @@ export default function TelcoPage() {
               }`}
             >
               <Star size={14} className={starOnly ? "fill-warning" : ""} />
-              Solo con oportunidad
+              Solo marcados ⭐
             </button>
             <select
               value={filter}
@@ -256,13 +269,17 @@ export default function TelcoPage() {
                     <td className="py-3 px-2 font-data text-muted">{rowNum}</td>
                     <td className="py-3 px-2 text-xs">
                       <span className="flex items-center gap-1.5">
-                        {canAddMore(r) && (
-                          <Star
-                            size={13}
-                            className="fill-warning text-warning shrink-0"
-                            aria-label="Se le puede añadir un servicio"
-                          />
-                        )}
+                        <button
+                          onClick={() => handleStar(id)}
+                          title={starred.has(id) ? "Quitar marca de upgrade" : "Marcar como upgrade"}
+                          className={`shrink-0 transition ${
+                            starred.has(id)
+                              ? "text-warning"
+                              : "text-muted/40 hover:text-warning"
+                          }`}
+                        >
+                          <Star size={14} className={starred.has(id) ? "fill-warning" : ""} />
+                        </button>
                         {r[0]}
                       </span>
                     </td>
