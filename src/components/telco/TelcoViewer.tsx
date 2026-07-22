@@ -1,0 +1,753 @@
+"use client";
+
+import { useEffect, useState, useTransition, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { Copy, Trash2, Phone, MessageSquare, X, Star, DollarSign } from "lucide-react";
+import { telcoRegistros, countActive } from "@/lib/telco-data";
+import { createCustomerAction, type NewCustomerInput } from "@/lib/actions/customers";
+import { AddedProductsCheckboxes } from "@/components/customer/AddedProductsCheckboxes";
+import { planToServiceFlags } from "@/components/customer/ServiceChips";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import type { Plan } from "@/types/plan";
+
+const registros = telcoRegistros;
+
+type CallRecord = { fecha: string; hora: string; estado: "answered" | "missed" };
+type NoteRecord = { texto: string; fecha: string };
+type RegistroData = { llamadas: CallRecord[]; notas: NoteRecord[] };
+
+const selectClassName =
+  "h-10 w-full rounded-lg border border-muted/30 bg-surface px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
+
+/** "URB BAIROA, A2 CALLE G, CAGUAS" → "Caguas" (el pueblo es siempre el último segmento) */
+function townFromAddress(address: string): string {
+  const last = address.split(",").pop()?.trim() ?? "";
+  return last ? last.charAt(0).toUpperCase() + last.slice(1).toLowerCase() : "";
+}
+
+const emptySale: NewCustomerInput = {
+  name: "",
+  email: "",
+  phone: "",
+  type: "B2C",
+  town: "",
+  creditCode: "",
+  hasInternetToday: true,
+  competitorSpeedMbps: 100,
+  competitorPrice: 0,
+  assignedPlanId: "",
+  addedInternet: false,
+  addedVideo: false,
+  addedVoice: false,
+  notes: "",
+};
+
+export function TelcoViewer({ plans }: { plans: Plan[] }) {
+  const router = useRouter();
+  const [data, setData] = useState<Record<string, RegistroData>>({});
+  const [discarded, setDiscarded] = useState<Set<string>>(new Set());
+  const [deleted, setDeleted] = useState<Set<string>>(new Set());
+  const [starred, setStarred] = useState<Set<string>>(new Set());
+  const [sold, setSold] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState("todos");
+  const [starOnly, setStarOnly] = useState(false);
+  const [page, setPage] = useState(0);
+  const [selectedTab, setSelectedTab] = useState<"parciales" | "completos" | "inactivos" | "vendidos" | "descartados">("parciales");
+  const [modalOpen, setModalOpen] = useState<{ type: "call" | "note"; id: string } | null>(null);
+  const [callInput, setCallInput] = useState({ fecha: "", hora: "", estado: "answered" as "answered" | "missed" });
+  const [noteInput, setNoteInput] = useState("");
+  const [copied, setCopied] = useState<string | null>(null);
+  const [saleFor, setSaleFor] = useState<string | null>(null);
+  const [saleForm, setSaleForm] = useState<NewCustomerInput>(emptySale);
+  const [saleError, setSaleError] = useState<string | null>(null);
+  const [savingSale, startSale] = useTransition();
+
+  useEffect(() => {
+    const stored = localStorage.getItem("telco-data");
+    const storedDiscarded = localStorage.getItem("telco-discarded");
+    const storedDeleted = localStorage.getItem("telco-deleted");
+    const storedStarred = localStorage.getItem("telco-starred");
+    const storedSold = localStorage.getItem("telco-sold");
+    if (stored) setData(JSON.parse(stored));
+    if (storedDiscarded) setDiscarded(new Set(JSON.parse(storedDiscarded)));
+    if (storedDeleted) setDeleted(new Set(JSON.parse(storedDeleted)));
+    if (storedStarred) setStarred(new Set(JSON.parse(storedStarred)));
+    if (storedSold) setSold(new Set(JSON.parse(storedSold)));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("telco-data", JSON.stringify(data));
+  }, [data]);
+
+  useEffect(() => {
+    localStorage.setItem("telco-discarded", JSON.stringify([...discarded]));
+  }, [discarded]);
+
+  useEffect(() => {
+    localStorage.setItem("telco-deleted", JSON.stringify([...deleted]));
+  }, [deleted]);
+
+  useEffect(() => {
+    localStorage.setItem("telco-starred", JSON.stringify([...starred]));
+  }, [starred]);
+
+  useEffect(() => {
+    localStorage.setItem("telco-sold", JSON.stringify([...sold]));
+  }, [sold]);
+
+  const getRegistrosByTab = () => {
+    const active: string[] = [];
+    const parcial: string[] = [];
+    const inactivo: string[] = [];
+
+    registros.forEach((r, i) => {
+      const id = r[1];
+      if (deleted.has(id) || discarded.has(id) || sold.has(id)) return;
+      const count = countActive(r[4], r[5], r[6]);
+      if (count === 3) active.push(id);
+      else if (count > 0) parcial.push(id);
+      else inactivo.push(id);
+    });
+
+    if (selectedTab === "vendidos") {
+      return registros.filter((r) => sold.has(r[1]) && !deleted.has(r[1])).map((r) => r[1]);
+    }
+    if (selectedTab === "descartados") {
+      return registros.filter((r) => discarded.has(r[1]) && !deleted.has(r[1])).map((r) => r[1]);
+    }
+    if (selectedTab === "completos") return active;
+    if (selectedTab === "inactivos") return inactivo;
+    return parcial;
+  };
+
+  const filtered = getRegistrosByTab().filter((id) => {
+    const r = registros.find((x) => x[1] === id)!;
+    const count = countActive(r[4], r[5], r[6]);
+    if (starOnly && !starred.has(id)) return false;
+    if (filter === "1" && count !== 1) return false;
+    if (filter === "2" && count !== 2) return false;
+    return true;
+  });
+
+  const paginated = filtered.slice(page * 10, (page + 1) * 10);
+  const maxPages = Math.ceil(filtered.length / 10);
+
+  const handleAddCall = (id: string) => {
+    if (!callInput.fecha || !callInput.hora) return;
+    setData((prev) => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        llamadas: [...(prev[id]?.llamadas || []), { ...callInput }],
+      },
+    }));
+    setCallInput({ fecha: "", hora: "", estado: "answered" });
+    setModalOpen(null);
+  };
+
+  const handleAddNote = (id: string) => {
+    if (!noteInput.trim()) return;
+    const today = new Date().toISOString().split("T")[0];
+    setData((prev) => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        notas: [...(prev[id]?.notas || []), { texto: noteInput, fecha: today }],
+      },
+    }));
+    setNoteInput("");
+  };
+
+  const copyToClipboard = async (id: string) => {
+    await navigator.clipboard.writeText(id);
+    setCopied(id);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const handleDiscard = (id: string) => {
+    setDiscarded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  /** Abre el formulario de venta con lo que ya sabemos del registro telco */
+  const openSale = (id: string) => {
+    const r = registros.find((x) => x[1] === id)!;
+    setSaleForm({
+      ...emptySale,
+      town: townFromAddress(r[0]),
+      // La dirección y el ID del registro quedan en la bitácora del cliente para trazabilidad
+      notes: `Venta desde Servicios Telefónicos — ${r[0]} (ID ${id})`,
+    });
+    setSaleError(null);
+    setSaleFor(id);
+  };
+
+  /** Al elegir plan, pre-marca qué productos se agregaron (igual que en Nuevo cliente) */
+  const selectSalePlan = (planId: string) => {
+    const plan = plans.find((p) => p.id === planId);
+    const flags = plan ? planToServiceFlags(plan) : null;
+    setSaleForm((prev) => ({
+      ...prev,
+      assignedPlanId: planId,
+      addedInternet: flags ? flags.internet : prev.addedInternet,
+      addedVideo: flags ? flags.tv : prev.addedVideo,
+      addedVoice: flags ? flags.phone : prev.addedVoice,
+    }));
+  };
+
+  const submitSale = (e: FormEvent) => {
+    e.preventDefault();
+    if (!saleFor) return;
+    setSaleError(null);
+    const id = saleFor;
+    startSale(async () => {
+      const result = await createCustomerAction(saleForm);
+      if (!result.success) {
+        setSaleError(result.error ?? "Error desconocido");
+        return;
+      }
+      // Solo lo movemos a "Vendido" si el cliente se creó de verdad en Firebase
+      setSold((prev) => new Set(prev).add(id));
+      setSaleFor(null);
+      router.refresh();
+    });
+  };
+
+  const handleStar = (id: string) => {
+    setStarred((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleDelete = (id: string) => {
+    if (!confirm("¿Borrar este registro permanentemente del app? No se puede recuperar.")) return;
+    setDeleted((prev) => new Set(prev).add(id));
+    setDiscarded((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const handleDeleteNote = (id: string, index: number) => {
+    setData((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], notas: (prev[id]?.notas || []).filter((_, i) => i !== index) },
+    }));
+  };
+
+  const handleDeleteCall = (id: string, index: number) => {
+    setData((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], llamadas: (prev[id]?.llamadas || []).filter((_, i) => i !== index) },
+    }));
+  };
+
+  const available = (r: (typeof registros)[number]) =>
+    !deleted.has(r[1]) && !discarded.has(r[1]) && !sold.has(r[1]);
+  const counts = {
+    parciales: registros.filter((r) => {
+      const c = countActive(r[4], r[5], r[6]);
+      return available(r) && (c === 1 || c === 2);
+    }).length,
+    completos: registros.filter((r) => available(r) && countActive(r[4], r[5], r[6]) === 3).length,
+    inactivos: registros.filter((r) => available(r) && countActive(r[4], r[5], r[6]) === 0).length,
+    descartados: [...discarded].filter((id) => !deleted.has(id)).length,
+    marcados: [...starred].filter((id) => !deleted.has(id)).length,
+    vendidos: [...sold].filter((id) => !deleted.has(id)).length,
+  };
+
+  const renderStatus = (status: string) => {
+    if (status === "ACTIVE") return <span className="text-success">●</span>;
+    if (status === "DISCO") return <span className="text-warning">●</span>;
+    return <span className="text-muted">●</span>;
+  };
+
+  return (
+    <div className="min-h-screen bg-background p-6">
+      <div className="max-w-7xl mx-auto">
+        <h1 className="hud-title font-heading text-2xl font-bold mb-1">Servicios Telefónicos</h1>
+        <p className="text-sm text-muted mb-6">
+          {counts.parciales} Parciales · {counts.completos} Completos · {counts.inactivos} Inactivos ·{" "}
+          <span className="text-danger">{counts.descartados} Descartados</span> ·{" "}
+          <span className="text-warning">⭐ {counts.marcados} marcados</span> ·{" "}
+          <span className="text-success">💵 {counts.vendidos} vendidos</span>
+        </p>
+
+        <div className="flex flex-wrap gap-2 mb-6 border-b border-primary/20">
+          {(["parciales", "completos", "inactivos", "vendidos", "descartados"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => {
+                setSelectedTab(tab);
+                setPage(0);
+              }}
+              className={`pb-2 px-3 text-sm font-semibold transition ${
+                selectedTab === tab
+                  ? "border-b-2 border-primary text-primary"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              {tab === "parciales"
+                ? "⚠️ Parciales"
+                : tab === "completos"
+                  ? "✅ Completos"
+                  : tab === "inactivos"
+                    ? "❌ Inactivos"
+                    : tab === "vendidos"
+                      ? "💵 Vendido"
+                      : "🗑️ Descartados"}
+            </button>
+          ))}
+        </div>
+
+        {selectedTab !== "descartados" && selectedTab !== "vendidos" && (
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => {
+                setStarOnly((v) => !v);
+                setPage(0);
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${
+                starOnly
+                  ? "border-warning bg-warning/15 text-warning"
+                  : "border-muted/30 bg-surface text-muted hover:border-warning/60 hover:text-warning"
+              }`}
+            >
+              <Star size={14} className={starOnly ? "fill-warning" : ""} />
+              Solo marcados ⭐
+            </button>
+            <select
+              value={filter}
+              onChange={(e) => {
+                setFilter(e.target.value);
+                setPage(0);
+              }}
+              className="rounded-lg border border-muted/30 bg-surface px-3 py-2 text-sm text-foreground"
+            >
+              <option value="todos">Todos los estados</option>
+              <option value="1">1 ACTIVE</option>
+              <option value="2">2 ACTIVE</option>
+            </select>
+          </div>
+        )}
+
+        {selectedTab === "descartados" && (
+          <div className="mb-4 text-xs text-muted">Aquí están los registros descartados. Haz clic para recuperar.</div>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-primary/15 text-xs font-semibold text-muted">
+                <th className="text-left py-2 px-2">#</th>
+                <th className="text-left py-2 px-2">Dirección</th>
+                <th className="text-left py-2 px-2">ID</th>
+                <th className="text-center py-2 px-2">VIDEO</th>
+                <th className="text-center py-2 px-2">INTERNET</th>
+                <th className="text-center py-2 px-2">VOICE</th>
+                <th className="text-center py-2 px-2">Llamadas</th>
+                <th className="text-center py-2 px-2">Notas</th>
+                <th className="text-center py-2 px-2">Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginated.map((id, idx) => {
+                const r = registros.find((x) => x[1] === id)!;
+                const meta = data[id];
+                const rowNum = page * 10 + idx + 1;
+                return (
+                  <tr key={id} className="border-b border-primary/10 hover:bg-primary/5 transition">
+                    <td className="py-3 px-2 font-data text-muted">{rowNum}</td>
+                    <td className="py-3 px-2 text-xs">
+                      <span className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleStar(id)}
+                          title={starred.has(id) ? "Quitar marca de upgrade" : "Marcar como upgrade"}
+                          className={`shrink-0 transition ${
+                            starred.has(id)
+                              ? "text-warning"
+                              : "text-muted/40 hover:text-warning"
+                          }`}
+                        >
+                          <Star size={14} className={starred.has(id) ? "fill-warning" : ""} />
+                        </button>
+                        {r[0]}
+                      </span>
+                    </td>
+                    <td className="py-3 px-2">
+                      <button
+                        onClick={() => copyToClipboard(id)}
+                        className="font-data text-primary hover:underline flex items-center gap-1 text-xs"
+                      >
+                        {id}
+                        <Copy size={12} />
+                      </button>
+                      {copied === id && <span className="ml-2 text-[10px] text-success">Copiado</span>}
+                    </td>
+                    <td className="py-3 px-2 text-center">{renderStatus(r[4])}</td>
+                    <td className="py-3 px-2 text-center">{renderStatus(r[5])}</td>
+                    <td className="py-3 px-2 text-center">{renderStatus(r[6])}</td>
+                    <td className="py-3 px-2 text-center">
+                      <button
+                        onClick={() => setModalOpen({ type: "call", id })}
+                        className="inline-flex items-center gap-1 text-xs bg-primary/15 hover:bg-primary/25 px-2 py-1 rounded text-primary"
+                      >
+                        <Phone size={12} />
+                        {meta?.llamadas?.length || 0}
+                      </button>
+                    </td>
+                    <td className="py-3 px-2 text-center">
+                      <button
+                        onClick={() => setModalOpen({ type: "note", id })}
+                        className="inline-flex items-center gap-1 text-xs bg-primary/15 hover:bg-primary/25 px-2 py-1 rounded text-primary"
+                      >
+                        <MessageSquare size={12} />
+                        {meta?.notas?.length || 0}
+                      </button>
+                    </td>
+                    <td className="py-3 px-2 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        {sold.has(id) ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded bg-success/15 px-2 py-1 text-xs text-success"
+                            title="Ya se convirtió en cliente"
+                          >
+                            <DollarSign size={12} />
+                            Vendido
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => openSale(id)}
+                            title="Pasar a venta (crea el cliente)"
+                            className="inline-flex items-center gap-1 rounded bg-success/15 px-2 py-1 text-xs text-success transition hover:bg-success/30"
+                          >
+                            <DollarSign size={12} />
+                            Vender
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDiscard(id)}
+                          title={discarded.has(id) ? "Recuperar" : "Descartar"}
+                          className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded transition ${
+                            discarded.has(id)
+                              ? "bg-success/15 text-success hover:bg-success/25"
+                              : "bg-warning/15 text-warning hover:bg-warning/25"
+                          }`}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(id)}
+                          title="Borrar permanentemente"
+                          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-danger/15 text-danger hover:bg-danger/30 transition"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mt-6 flex justify-between items-center text-xs text-muted">
+          <div>
+            Mostrando {paginated.length > 0 ? page * 10 + 1 : 0} – {Math.min((page + 1) * 10, filtered.length)} de {filtered.length}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage(Math.max(0, page - 1))}
+              disabled={page === 0}
+              className="px-3 py-1 rounded border border-primary/30 hover:border-primary/60 disabled:opacity-50"
+            >
+              ← Ant.
+            </button>
+            {Array.from({ length: Math.min(maxPages, 5) }).map((_, i) => {
+              const pageNum = i;
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setPage(pageNum)}
+                  className={`px-2 py-1 rounded text-xs ${
+                    page === pageNum ? "bg-primary text-foreground" : "border border-primary/30 hover:border-primary/60"
+                  }`}
+                >
+                  {pageNum + 1}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setPage(Math.min(maxPages - 1, page + 1))}
+              disabled={page >= maxPages - 1}
+              className="px-3 py-1 rounded border border-primary/30 hover:border-primary/60 disabled:opacity-50"
+            >
+              Sig. →
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {modalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-surface border border-primary/30 rounded-lg p-6 max-w-md w-full">
+            {modalOpen.type === "call" ? (
+              <>
+                <h2 className="font-semibold mb-4 text-primary">Registrar Llamada</h2>
+                {(data[modalOpen.id]?.llamadas?.length ?? 0) > 0 && (
+                  <div className="mb-4 max-h-40 overflow-y-auto space-y-1.5 border-b border-primary/15 pb-3">
+                    {data[modalOpen.id].llamadas.map((c, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between gap-2 text-xs bg-background/50 rounded px-2 py-1.5"
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className={c.estado === "answered" ? "text-success" : "text-warning"}>●</span>
+                          <span className="font-data">{c.fecha} {c.hora}</span>
+                          <span className="text-muted">{c.estado === "answered" ? "Contestó" : "No contestó"}</span>
+                        </span>
+                        <button
+                          onClick={() => handleDeleteCall(modalOpen.id, i)}
+                          className="text-muted hover:text-danger"
+                          title="Borrar llamada"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-muted mb-1">Fecha</label>
+                    <input
+                      type="date"
+                      value={callInput.fecha}
+                      onChange={(e) => setCallInput({ ...callInput, fecha: e.target.value })}
+                      className="w-full rounded border border-muted/30 bg-background px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted mb-1">Hora</label>
+                    <input
+                      type="time"
+                      value={callInput.hora}
+                      onChange={(e) => setCallInput({ ...callInput, hora: e.target.value })}
+                      className="w-full rounded border border-muted/30 bg-background px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted mb-1">Estado</label>
+                    <select
+                      value={callInput.estado}
+                      onChange={(e) =>
+                        setCallInput({
+                          ...callInput,
+                          estado: e.target.value as "answered" | "missed",
+                        })
+                      }
+                      className="w-full rounded border border-muted/30 bg-background px-2 py-1.5 text-sm"
+                    >
+                      <option value="answered">Verde (Contestó)</option>
+                      <option value="missed">Amarillo (No contestó)</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      onClick={() => setModalOpen(null)}
+                      className="flex-1 px-3 py-1.5 rounded border border-muted/30 hover:border-primary/60 text-sm"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => handleAddCall(modalOpen.id)}
+                      className="flex-1 px-3 py-1.5 rounded bg-primary text-foreground hover:bg-primary/80 text-sm"
+                    >
+                      Guardar
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="font-semibold mb-4 text-primary">Notas</h2>
+                {(data[modalOpen.id]?.notas?.length ?? 0) > 0 ? (
+                  <div className="mb-4 max-h-48 overflow-y-auto space-y-2 border-b border-primary/15 pb-3">
+                    {data[modalOpen.id].notas.map((n, i) => (
+                      <div key={i} className="flex items-start justify-between gap-2 bg-background/50 rounded px-2 py-2">
+                        <div className="flex-1">
+                          <p className="text-sm whitespace-pre-wrap break-words">{n.texto}</p>
+                          <p className="mt-1 font-data text-[10px] text-muted">{n.fecha}</p>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteNote(modalOpen.id, i)}
+                          className="text-muted hover:text-danger shrink-0"
+                          title="Borrar nota"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mb-4 text-xs text-muted">Aún no hay notas. Escribe la primera abajo.</p>
+                )}
+                <div className="space-y-3">
+                  <textarea
+                    value={noteInput}
+                    onChange={(e) => setNoteInput(e.target.value)}
+                    placeholder="Escribe tu nota aquí..."
+                    className="w-full rounded border border-muted/30 bg-background px-2 py-2 text-sm min-h-[100px]"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setModalOpen(null)}
+                      className="flex-1 px-3 py-1.5 rounded border border-muted/30 hover:border-primary/60 text-sm"
+                    >
+                      Cerrar
+                    </button>
+                    <button
+                      onClick={() => handleAddNote(modalOpen.id)}
+                      className="flex-1 px-3 py-1.5 rounded bg-primary text-foreground hover:bg-primary/80 text-sm"
+                    >
+                      Agregar
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Pasar un registro a venta: crea el cliente real en Firebase y lo mueve a "Vendido" */}
+      <Dialog open={saleFor !== null} onClose={() => setSaleFor(null)} title="Pasar a venta">
+        <form onSubmit={submitSale} className="space-y-3">
+          {saleFor && (
+            <p className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-xs text-muted">
+              {registros.find((r) => r[1] === saleFor)?.[0]}
+              <span className="ml-1 font-data text-primary">({saleFor})</span>
+            </p>
+          )}
+
+          <div>
+            <label className="mb-1 block text-xs text-muted">Nombre</label>
+            <Input
+              value={saleForm.name}
+              onChange={(e) => setSaleForm({ ...saleForm, name: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs text-muted">Email</label>
+              <Input
+                type="email"
+                value={saleForm.email}
+                onChange={(e) => setSaleForm({ ...saleForm, email: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted">Teléfono</label>
+              <Input
+                value={saleForm.phone}
+                onChange={(e) => setSaleForm({ ...saleForm, phone: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs text-muted">Pueblo</label>
+              <Input
+                value={saleForm.town}
+                onChange={(e) => setSaleForm({ ...saleForm, town: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted">Código de crédito</label>
+              <Input
+                value={saleForm.creditCode}
+                onChange={(e) =>
+                  setSaleForm({ ...saleForm, creditCode: e.target.value.toUpperCase() })
+                }
+                placeholder="Ej. AB"
+                className="font-data uppercase"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-muted">Plan a asignar</label>
+            <select
+              value={saleForm.assignedPlanId}
+              onChange={(e) => selectSalePlan(e.target.value)}
+              required
+              className={selectClassName}
+            >
+              <option value="" disabled>
+                Selecciona un plan
+              </option>
+              {plans.map((plan) => (
+                <option key={plan.id} value={plan.id}>
+                  {plan.name} — ${plan.promo_price_2025.toFixed(2)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <AddedProductsCheckboxes
+            value={{
+              internet: saleForm.addedInternet,
+              video: saleForm.addedVideo,
+              voice: saleForm.addedVoice,
+            }}
+            onChange={(v) =>
+              setSaleForm((prev) => ({
+                ...prev,
+                addedInternet: v.internet,
+                addedVideo: v.video,
+                addedVoice: v.voice,
+              }))
+            }
+          />
+
+          <div>
+            <label className="mb-1 block text-xs text-muted">Notas</label>
+            <Input
+              value={saleForm.notes}
+              onChange={(e) => setSaleForm({ ...saleForm, notes: e.target.value })}
+            />
+          </div>
+
+          {saleError && <p className="text-sm text-danger">{saleError}</p>}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => setSaleFor(null)}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={savingSale}>
+              {savingSale ? "Creando..." : "Crear cliente y marcar vendido"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+    </div>
+  );
+}
