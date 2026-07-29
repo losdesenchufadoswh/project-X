@@ -17,6 +17,13 @@ const registros = telcoRegistros;
 type CallRecord = { fecha: string; hora: string; estado: "answered" | "missed" };
 type NoteRecord = { texto: string; fecha: string };
 type RegistroData = { llamadas: CallRecord[]; notas: NoteRecord[] };
+/** Qué producto pienso añadirle a este registro (marca manual del vendedor) */
+type AddTags = { telefono: boolean; internet: boolean; voice: boolean };
+const ADD_PRODUCTS: { key: keyof AddTags; label: string }[] = [
+  { key: "telefono", label: "Tel" },
+  { key: "internet", label: "Int" },
+  { key: "voice", label: "Voz" },
+];
 
 const selectClassName =
   "h-10 w-full rounded-lg border border-muted/30 bg-surface px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
@@ -51,6 +58,8 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
   const [deleted, setDeleted] = useState<Set<string>>(new Set());
   const [starred, setStarred] = useState<Set<string>>(new Set());
   const [sold, setSold] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [addTags, setAddTags] = useState<Record<string, AddTags>>({});
   const [filter, setFilter] = useState("todos");
   const [starOnly, setStarOnly] = useState(false);
   const [page, setPage] = useState(0);
@@ -70,11 +79,13 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
     const storedDeleted = localStorage.getItem("telco-deleted");
     const storedStarred = localStorage.getItem("telco-starred");
     const storedSold = localStorage.getItem("telco-sold");
+    const storedAddTags = localStorage.getItem("telco-addtags");
     if (stored) setData(JSON.parse(stored));
     if (storedDiscarded) setDiscarded(new Set(JSON.parse(storedDiscarded)));
     if (storedDeleted) setDeleted(new Set(JSON.parse(storedDeleted)));
     if (storedStarred) setStarred(new Set(JSON.parse(storedStarred)));
     if (storedSold) setSold(new Set(JSON.parse(storedSold)));
+    if (storedAddTags) setAddTags(JSON.parse(storedAddTags));
   }, []);
 
   useEffect(() => {
@@ -96,6 +107,10 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
   useEffect(() => {
     localStorage.setItem("telco-sold", JSON.stringify([...sold]));
   }, [sold]);
+
+  useEffect(() => {
+    localStorage.setItem("telco-addtags", JSON.stringify(addTags));
+  }, [addTags]);
 
   const getRegistrosByTab = () => {
     const active: string[] = [];
@@ -241,6 +256,45 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
     });
   };
 
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Selecciona/deselecciona todos los registros visibles en la página actual
+  const allPageSelected = paginated.length > 0 && paginated.every((id) => selected.has(id));
+  const toggleSelectPage = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) paginated.forEach((id) => next.delete(id));
+      else paginated.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
+  const handleBulkDelete = () => {
+    if (selected.size === 0) return;
+    if (!confirm(`¿Borrar permanentemente ${selected.size} registro(s)? No se puede recuperar.`)) return;
+    setDeleted((prev) => new Set([...prev, ...selected]));
+    setDiscarded((prev) => {
+      const next = new Set(prev);
+      selected.forEach((id) => next.delete(id));
+      return next;
+    });
+    setSelected(new Set());
+  };
+
+  const toggleAddTag = (id: string, key: keyof AddTags) => {
+    setAddTags((prev) => {
+      const current = prev[id] ?? { telefono: false, internet: false, voice: false };
+      return { ...prev, [id]: { ...current, [key]: !current[key] } };
+    });
+  };
+
   const handleDeleteNote = (id: string, index: number) => {
     setData((prev) => ({
       ...prev,
@@ -348,16 +402,49 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
           <div className="mb-4 text-xs text-muted">Aquí están los registros descartados. Haz clic para recuperar.</div>
         )}
 
+        {selected.size > 0 && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2">
+            <span className="text-sm text-foreground">
+              <span className="font-data text-danger">{selected.size}</span> seleccionado(s)
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSelected(new Set())}
+                className="rounded border border-muted/30 px-3 py-1.5 text-xs hover:border-primary/60"
+              >
+                Limpiar
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                className="inline-flex items-center gap-1.5 rounded bg-danger px-3 py-1.5 text-xs font-semibold text-background transition hover:bg-danger/80"
+              >
+                <Trash2 size={13} />
+                Borrar seleccionados
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-primary/15 text-xs font-semibold text-muted">
+                <th className="py-2 px-2">
+                  <input
+                    type="checkbox"
+                    checked={allPageSelected}
+                    onChange={toggleSelectPage}
+                    className="h-4 w-4 accent-primary"
+                    title="Seleccionar todos en esta página"
+                  />
+                </th>
                 <th className="text-left py-2 px-2">#</th>
                 <th className="text-left py-2 px-2">Dirección</th>
                 <th className="text-left py-2 px-2">ID</th>
                 <th className="text-center py-2 px-2">VIDEO</th>
                 <th className="text-center py-2 px-2">INTERNET</th>
                 <th className="text-center py-2 px-2">VOICE</th>
+                <th className="text-center py-2 px-2">Añadir</th>
                 <th className="text-center py-2 px-2">Llamadas</th>
                 <th className="text-center py-2 px-2">Notas</th>
                 <th className="text-center py-2 px-2">Acción</th>
@@ -369,7 +456,20 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
                 const meta = data[id];
                 const rowNum = page * 10 + idx + 1;
                 return (
-                  <tr key={id} className="border-b border-primary/10 hover:bg-primary/5 transition">
+                  <tr
+                    key={id}
+                    className={`border-b border-primary/10 transition ${
+                      selected.has(id) ? "bg-danger/5" : "hover:bg-primary/5"
+                    }`}
+                  >
+                    <td className="py-3 px-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(id)}
+                        onChange={() => toggleSelect(id)}
+                        className="h-4 w-4 accent-primary"
+                      />
+                    </td>
                     <td className="py-3 px-2 font-data text-muted">{rowNum}</td>
                     <td className="py-3 px-2 text-xs">
                       <span className="flex items-center gap-1.5">
@@ -400,6 +500,27 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
                     <td className="py-3 px-2 text-center">{renderStatus(r[4])}</td>
                     <td className="py-3 px-2 text-center">{renderStatus(r[5])}</td>
                     <td className="py-3 px-2 text-center">{renderStatus(r[6])}</td>
+                    <td className="py-3 px-2">
+                      <div className="flex items-center justify-center gap-1">
+                        {ADD_PRODUCTS.map(({ key, label }) => {
+                          const on = addTags[id]?.[key] ?? false;
+                          return (
+                            <button
+                              key={key}
+                              onClick={() => toggleAddTag(id, key)}
+                              title={`Marcar para añadir ${label}`}
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition ${
+                                on
+                                  ? "bg-primary text-background"
+                                  : "bg-primary/10 text-muted hover:bg-primary/20 hover:text-primary"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </td>
                     <td className="py-3 px-2 text-center">
                       <button
                         onClick={() => setModalOpen({ type: "call", id })}
