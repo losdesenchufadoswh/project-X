@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Trash2, Phone, MessageSquare, X, Star, DollarSign } from "lucide-react";
+import { Copy, Trash2, Phone, MessageSquare, X, Star, DollarSign, Search } from "lucide-react";
 import { telcoRegistros, countActive } from "@/lib/telco-data";
 import { createCustomerAction, type NewCustomerInput } from "@/lib/actions/customers";
 import { AddedProductsCheckboxes } from "@/components/customer/AddedProductsCheckboxes";
@@ -62,6 +62,7 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
   const [addTags, setAddTags] = useState<Record<string, AddTags>>({});
   const [filter, setFilter] = useState("todos");
   const [starOnly, setStarOnly] = useState(false);
+  const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [selectedTab, setSelectedTab] = useState<"parciales" | "completos" | "inactivos" | "vendidos" | "descartados">("parciales");
   const [modalOpen, setModalOpen] = useState<{ type: "call" | "note"; id: string } | null>(null);
@@ -137,14 +138,25 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
     return parcial;
   };
 
-  const filtered = getRegistrosByTab().filter((id) => {
-    const r = registros.find((x) => x[1] === id)!;
-    const count = countActive(r[4], r[5], r[6]);
-    if (starOnly && !starred.has(id)) return false;
-    if (filter === "1" && count !== 1) return false;
-    if (filter === "2" && count !== 2) return false;
-    return true;
-  });
+  // Búsqueda: cuando hay texto, busca en TODOS los registros (por dirección o ID),
+  // sin importar la pestaña — así siempre encuentras la urb que buscas.
+  const searchTerm = search.trim().toLowerCase();
+  const filtered = searchTerm
+    ? registros
+        .filter(
+          (r) =>
+            !deleted.has(r[1]) &&
+            (r[0].toLowerCase().includes(searchTerm) || r[1].includes(searchTerm))
+        )
+        .map((r) => r[1])
+    : getRegistrosByTab().filter((id) => {
+        const r = registros.find((x) => x[1] === id)!;
+        const count = countActive(r[4], r[5], r[6]);
+        if (starOnly && !starred.has(id)) return false;
+        if (filter === "1" && count !== 1) return false;
+        if (filter === "2" && count !== 2) return false;
+        return true;
+      });
 
   const paginated = filtered.slice(page * 10, (page + 1) * 10);
   const maxPages = Math.ceil(filtered.length / 10);
@@ -340,6 +352,45 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
           <span className="text-success">💵 {counts.vendidos} vendidos</span>
         </p>
 
+        {/* Buscador global: por dirección/urbanización o ID, en todos los registros */}
+        <div className="relative mb-4">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(0);
+            }}
+            placeholder="Buscar urbanización, dirección o ID…"
+            className="h-11 w-full rounded-lg border border-primary/30 bg-surface pl-9 pr-9 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          {search && (
+            <button
+              onClick={() => {
+                setSearch("");
+                setPage(0);
+              }}
+              title="Limpiar búsqueda"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted hover:text-foreground"
+            >
+              <X size={15} />
+            </button>
+          )}
+        </div>
+
+        {searchTerm && (
+          <p className="mb-4 text-xs text-muted">
+            Buscando en <span className="text-primary">todos</span> los registros —{" "}
+            <span className="font-data text-foreground">{filtered.length}</span> resultado(s) para “
+            {search.trim()}”.
+          </p>
+        )}
+
+        {!searchTerm && (
         <div className="flex flex-wrap gap-2 mb-6 border-b border-primary/20">
           {(["parciales", "completos", "inactivos", "vendidos", "descartados"] as const).map((tab) => (
             <button
@@ -366,8 +417,9 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
             </button>
           ))}
         </div>
+        )}
 
-        {selectedTab !== "descartados" && selectedTab !== "vendidos" && (
+        {!searchTerm && selectedTab !== "descartados" && selectedTab !== "vendidos" && (
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <button
               onClick={() => {
