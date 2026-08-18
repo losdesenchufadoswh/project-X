@@ -73,6 +73,10 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
   const [saleForm, setSaleForm] = useState<NewCustomerInput>(emptySale);
   const [saleError, setSaleError] = useState<string | null>(null);
   const [savingSale, startSale] = useTransition();
+  // Solo empezamos a guardar DESPUÉS de leer lo que ya existía. Sin esto, los
+  // efectos de guardado corren al montar con el estado inicial vacío y
+  // sobrescriben el localStorage (borraba marcados/vendidos). Ver bug reportado.
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("telco-data");
@@ -87,31 +91,38 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
     if (storedStarred) setStarred(new Set(JSON.parse(storedStarred)));
     if (storedSold) setSold(new Set(JSON.parse(storedSold)));
     if (storedAddTags) setAddTags(JSON.parse(storedAddTags));
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
+    if (!hydrated) return;
     localStorage.setItem("telco-data", JSON.stringify(data));
-  }, [data]);
+  }, [data, hydrated]);
 
   useEffect(() => {
+    if (!hydrated) return;
     localStorage.setItem("telco-discarded", JSON.stringify([...discarded]));
-  }, [discarded]);
+  }, [discarded, hydrated]);
 
   useEffect(() => {
+    if (!hydrated) return;
     localStorage.setItem("telco-deleted", JSON.stringify([...deleted]));
-  }, [deleted]);
+  }, [deleted, hydrated]);
 
   useEffect(() => {
+    if (!hydrated) return;
     localStorage.setItem("telco-starred", JSON.stringify([...starred]));
-  }, [starred]);
+  }, [starred, hydrated]);
 
   useEffect(() => {
+    if (!hydrated) return;
     localStorage.setItem("telco-sold", JSON.stringify([...sold]));
-  }, [sold]);
+  }, [sold, hydrated]);
 
   useEffect(() => {
+    if (!hydrated) return;
     localStorage.setItem("telco-addtags", JSON.stringify(addTags));
-  }, [addTags]);
+  }, [addTags, hydrated]);
 
   const getRegistrosByTab = () => {
     const active: string[] = [];
