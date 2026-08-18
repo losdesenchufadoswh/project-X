@@ -149,14 +149,16 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
             (r[0].toLowerCase().includes(searchTerm) || r[1].includes(searchTerm))
         )
         .map((r) => r[1])
-    : getRegistrosByTab().filter((id) => {
-        const r = registros.find((x) => x[1] === id)!;
-        const count = countActive(r[4], r[5], r[6]);
-        if (starOnly && !starred.has(id)) return false;
-        if (filter === "1" && count !== 1) return false;
-        if (filter === "2" && count !== 2) return false;
-        return true;
-      });
+    : starOnly
+      ? // Solo marcados: muestra TODOS los marcados, sin importar la pestaña
+        registros.filter((r) => !deleted.has(r[1]) && starred.has(r[1])).map((r) => r[1])
+      : getRegistrosByTab().filter((id) => {
+          const r = registros.find((x) => x[1] === id)!;
+          const count = countActive(r[4], r[5], r[6]);
+          if (filter === "1" && count !== 1) return false;
+          if (filter === "2" && count !== 2) return false;
+          return true;
+        });
 
   const paginated = filtered.slice(page * 10, (page + 1) * 10);
   const maxPages = Math.ceil(filtered.length / 10);
@@ -387,6 +389,13 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
             Buscando en <span className="text-primary">todos</span> los registros —{" "}
             <span className="font-data text-foreground">{filtered.length}</span> resultado(s) para “
             {search.trim()}”.
+          </p>
+        )}
+
+        {!searchTerm && starOnly && (
+          <p className="mb-4 text-xs text-muted">
+            Mostrando tus <span className="text-warning">⭐ marcados</span> en todas las pestañas —{" "}
+            <span className="font-data text-foreground">{filtered.length}</span> registro(s).
           </p>
         )}
 
