@@ -1,24 +1,23 @@
 "use client";
 
-import { useEffect, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, Trash2, Phone, MessageSquare, X, Star, DollarSign, Search } from "lucide-react";
 import { telcoRegistros, countActive } from "@/lib/telco-data";
 import { createCustomerAction, type NewCustomerInput } from "@/lib/actions/customers";
+import { saveTelcoStateAction } from "@/lib/actions/telco";
 import { AddedProductsCheckboxes } from "@/components/customer/AddedProductsCheckboxes";
 import { planToServiceFlags } from "@/components/customer/ServiceChips";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import type { Plan } from "@/types/plan";
+import type { TelcoState, TelcoRecordData, TelcoAddTags } from "@/types/telco";
 
 const registros = telcoRegistros;
 
-type CallRecord = { fecha: string; hora: string; estado: "answered" | "missed" };
-type NoteRecord = { texto: string; fecha: string };
-type RegistroData = { llamadas: CallRecord[]; notas: NoteRecord[] };
-/** Qué producto pienso añadirle a este registro (marca manual del vendedor) */
-type AddTags = { telefono: boolean; internet: boolean; voice: boolean };
+type RegistroData = TelcoRecordData;
+type AddTags = TelcoAddTags;
 const ADD_PRODUCTS: { key: keyof AddTags; label: string }[] = [
   { key: "telefono", label: "Tel" },
   { key: "internet", label: "Int" },
@@ -51,15 +50,16 @@ const emptySale: NewCustomerInput = {
   notes: "",
 };
 
-export function TelcoViewer({ plans }: { plans: Plan[] }) {
+export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialState: TelcoState }) {
   const router = useRouter();
-  const [data, setData] = useState<Record<string, RegistroData>>({});
-  const [discarded, setDiscarded] = useState<Set<string>>(new Set());
-  const [deleted, setDeleted] = useState<Set<string>>(new Set());
-  const [starred, setStarred] = useState<Set<string>>(new Set());
-  const [sold, setSold] = useState<Set<string>>(new Set());
+  // Estado inicial desde Firestore (server). La verdad vive en Firebase, no en el navegador.
+  const [data, setData] = useState<Record<string, RegistroData>>(initialState.data);
+  const [discarded, setDiscarded] = useState<Set<string>>(new Set(initialState.discarded));
+  const [deleted, setDeleted] = useState<Set<string>>(new Set(initialState.deleted));
+  const [starred, setStarred] = useState<Set<string>>(new Set(initialState.starred));
+  const [sold, setSold] = useState<Set<string>>(new Set(initialState.sold));
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [addTags, setAddTags] = useState<Record<string, AddTags>>({});
+  const [addTags, setAddTags] = useState<Record<string, AddTags>>(initialState.addTags);
   const [filter, setFilter] = useState("todos");
   const [starOnly, setStarOnly] = useState(false);
   const [search, setSearch] = useState("");
@@ -73,56 +73,35 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
   const [saleForm, setSaleForm] = useState<NewCustomerInput>(emptySale);
   const [saleError, setSaleError] = useState<string | null>(null);
   const [savingSale, startSale] = useTransition();
-  // Solo empezamos a guardar DESPUÉS de leer lo que ya existía. Sin esto, los
-  // efectos de guardado corren al montar con el estado inicial vacío y
-  // sobrescriben el localStorage (borraba marcados/vendidos). Ver bug reportado.
-  const [hydrated, setHydrated] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
+  // Guarda TODO el estado en Firestore (debounced). No guardamos en el primer
+  // render (sería re-guardar lo que acabamos de cargar). La verdad vive en
+  // Firebase → no se pierde por bug, ni al limpiar el navegador, ni por dispositivo.
+  const firstRun = useRef(true);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    const stored = localStorage.getItem("telco-data");
-    const storedDiscarded = localStorage.getItem("telco-discarded");
-    const storedDeleted = localStorage.getItem("telco-deleted");
-    const storedStarred = localStorage.getItem("telco-starred");
-    const storedSold = localStorage.getItem("telco-sold");
-    const storedAddTags = localStorage.getItem("telco-addtags");
-    if (stored) setData(JSON.parse(stored));
-    if (storedDiscarded) setDiscarded(new Set(JSON.parse(storedDiscarded)));
-    if (storedDeleted) setDeleted(new Set(JSON.parse(storedDeleted)));
-    if (storedStarred) setStarred(new Set(JSON.parse(storedStarred)));
-    if (storedSold) setSold(new Set(JSON.parse(storedSold)));
-    if (storedAddTags) setAddTags(JSON.parse(storedAddTags));
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    localStorage.setItem("telco-data", JSON.stringify(data));
-  }, [data, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    localStorage.setItem("telco-discarded", JSON.stringify([...discarded]));
-  }, [discarded, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    localStorage.setItem("telco-deleted", JSON.stringify([...deleted]));
-  }, [deleted, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    localStorage.setItem("telco-starred", JSON.stringify([...starred]));
-  }, [starred, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    localStorage.setItem("telco-sold", JSON.stringify([...sold]));
-  }, [sold, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    localStorage.setItem("telco-addtags", JSON.stringify(addTags));
-  }, [addTags, hydrated]);
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveTelcoStateAction({
+        starred: [...starred],
+        sold: [...sold],
+        discarded: [...discarded],
+        deleted: [...deleted],
+        addTags,
+        data,
+      })
+        .then((r) => setSaveError(!r.success))
+        .catch(() => setSaveError(true));
+    }, 600);
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [starred, sold, discarded, deleted, addTags, data]);
 
   const getRegistrosByTab = () => {
     const active: string[] = [];
@@ -358,6 +337,14 @@ export function TelcoViewer({ plans }: { plans: Plan[] }) {
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
         <h1 className="hud-title font-heading text-2xl font-bold mb-1">Servicios Telefónicos</h1>
+
+        {saveError && (
+          <div className="mb-3 rounded-lg border border-danger/50 bg-danger/10 px-3 py-2 text-sm text-danger">
+            ⚠️ No se pudo guardar el último cambio en la nube. Revisa tu conexión — no cierres
+            la página hasta que desaparezca este aviso.
+          </div>
+        )}
+
         <p className="text-sm text-muted mb-6">
           {counts.parciales} Parciales · {counts.completos} Completos · {counts.inactivos} Inactivos ·{" "}
           <span className="text-danger">{counts.descartados} Descartados</span> ·{" "}
