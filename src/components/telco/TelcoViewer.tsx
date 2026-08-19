@@ -61,7 +61,9 @@ export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialSta
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [addTags, setAddTags] = useState<Record<string, AddTags>>(initialState.addTags);
   const [filter, setFilter] = useState("todos");
-  const [starOnly, setStarOnly] = useState(false);
+  // Si ya tienes marcados, el app abre mostrando SOLO esos (tu lista de prospectos).
+  // Si no hay ninguno, abre la lista completa para que puedas empezar a marcar.
+  const [starOnly, setStarOnly] = useState(initialState.starred.length > 0);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [selectedTab, setSelectedTab] = useState<"parciales" | "completos" | "inactivos" | "vendidos" | "descartados">("parciales");
@@ -392,8 +394,10 @@ export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialSta
 
         {!searchTerm && starOnly && (
           <p className="mb-4 text-xs text-muted">
-            Mostrando tus <span className="text-warning">⭐ marcados</span> en todas las pestañas —{" "}
-            <span className="font-data text-foreground">{filtered.length}</span> registro(s).
+            Mostrando tus <span className="text-warning">⭐ marcados</span> —{" "}
+            <span className="font-data text-foreground">{filtered.length}</span> registro(s). Apaga
+            el botón <span className="text-warning">“Solo marcados ⭐”</span> para ver la lista
+            completa y marcar nuevos.
           </p>
         )}
 

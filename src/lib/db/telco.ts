@@ -10,17 +10,22 @@ function docRef() {
 }
 
 export async function getTelcoState(): Promise<TelcoState> {
-  const doc = await docRef().get();
-  if (!doc.exists) return emptyTelcoState;
-  const d = (doc.data() ?? {}) as Partial<TelcoState>;
-  return {
-    starred: d.starred ?? [],
-    sold: d.sold ?? [],
-    discarded: d.discarded ?? [],
-    deleted: d.deleted ?? [],
-    addTags: d.addTags ?? {},
-    data: d.data ?? {},
-  };
+  try {
+    const doc = await docRef().get();
+    if (!doc.exists) return emptyTelcoState;
+    const d = (doc.data() ?? {}) as Partial<TelcoState>;
+    return {
+      starred: d.starred ?? [],
+      sold: d.sold ?? [],
+      discarded: d.discarded ?? [],
+      deleted: d.deleted ?? [],
+      addTags: d.addTags ?? {},
+      data: d.data ?? {},
+    };
+  } catch {
+    // Si Firestore falla, no rompemos la página: cargamos vacío (se muestra la lista completa).
+    return emptyTelcoState;
+  }
 }
 
 export async function saveTelcoState(state: TelcoState): Promise<void> {
