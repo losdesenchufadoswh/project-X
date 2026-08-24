@@ -294,6 +294,34 @@ export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialSta
     setSelected(new Set());
   };
 
+  // Borra todos los registros que NO marcaste (deja marcados + vendidos). Reversible.
+  const unmarkedCount = registros.filter(
+    (r) => !deleted.has(r[1]) && !starred.has(r[1]) && !sold.has(r[1])
+  ).length;
+  const handleDeleteUnmarked = () => {
+    if (unmarkedCount === 0) return;
+    if (
+      !confirm(
+        `¿Borrar los ${unmarkedCount} registros que NO marcaste? Tus ⭐ marcados y 💵 vendidos se quedan. Es reversible con "Recuperar borrados".`
+      )
+    )
+      return;
+    setDeleted((prev) => {
+      const next = new Set(prev);
+      registros.forEach((r) => {
+        if (!starred.has(r[1]) && !sold.has(r[1])) next.add(r[1]);
+      });
+      return next;
+    });
+    setSelected(new Set());
+  };
+
+  const handleRestoreDeleted = () => {
+    if (deleted.size === 0) return;
+    if (!confirm(`¿Recuperar los ${deleted.size} registros borrados?`)) return;
+    setDeleted(new Set());
+  };
+
   const toggleAddTag = (id: string, key: keyof AddTags) => {
     setAddTags((prev) => {
       const current = prev[id] ?? { telefono: false, internet: false, voice: false };
@@ -347,12 +375,33 @@ export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialSta
           </div>
         )}
 
-        <p className="text-sm text-muted mb-6">
-          {counts.parciales} Parciales · {counts.completos} Completos · {counts.inactivos} Inactivos ·{" "}
-          <span className="text-danger">{counts.descartados} Descartados</span> ·{" "}
+        <p className="text-sm text-muted mb-3">
+          {counts.parciales} disponibles ·{" "}
           <span className="text-warning">⭐ {counts.marcados} marcados</span> ·{" "}
-          <span className="text-success">💵 {counts.vendidos} vendidos</span>
+          <span className="text-success">💵 {counts.vendidos} vendidos</span> ·{" "}
+          <span className="text-danger">{counts.descartados} descartados</span>
         </p>
+
+        {/* Limpiar la lista: dejar solo lo marcado; reversible */}
+        <div className="mb-4 flex flex-wrap gap-2">
+          {unmarkedCount > 0 && (counts.marcados > 0 || counts.vendidos > 0) && (
+            <button
+              onClick={handleDeleteUnmarked}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs font-semibold text-danger transition hover:bg-danger/20"
+            >
+              <Trash2 size={13} />
+              Borrar los {unmarkedCount} no marcados
+            </button>
+          )}
+          {deleted.size > 0 && (
+            <button
+              onClick={handleRestoreDeleted}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-muted/30 bg-surface px-3 py-1.5 text-xs text-muted transition hover:border-primary/60 hover:text-primary"
+            >
+              ♻️ Recuperar {deleted.size} borrados
+            </button>
+          )}
+        </div>
 
         {/* Buscador global: por dirección/urbanización o ID, en todos los registros */}
         <div className="relative mb-4">
