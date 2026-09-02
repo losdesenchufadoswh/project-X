@@ -44,8 +44,11 @@ export interface NewCustomerInput {
 export async function createCustomerAction(input: NewCustomerInput): Promise<ActionResult> {
   if (!(await requireAdminSession())) return { success: false, error: "No autorizado." };
 
-  if (!input.name.trim() || !input.email.trim()) {
-    return { success: false, error: "Nombre y email son requeridos." };
+  // Solo el nombre es obligatorio. Un lead de puerta muchas veces no tiene email;
+  // el flujo rápido de "Pasar a venta" desde Servicios Telefónicos captura solo
+  // nombre, pueblo, teléfono y letra de crédito.
+  if (!input.name.trim()) {
+    return { success: false, error: "El nombre es requerido." };
   }
 
   // Plan opcional: si viene vacío el cliente nace como prospecto (sin plan, no cuenta como venta)

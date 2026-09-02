@@ -1,20 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, Trash2, Phone, MessageSquare, X, Star, DollarSign, Search } from "lucide-react";
 import { telcoRegistros, countActive } from "@/lib/telco-data";
 import { createCustomerAction, type NewCustomerInput } from "@/lib/actions/customers";
 import { saveTelcoStateAction } from "@/lib/actions/telco";
-import { AddedProductsCheckboxes } from "@/components/customer/AddedProductsCheckboxes";
-import { planToServiceFlags } from "@/components/customer/ServiceChips";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import type { Plan } from "@/types/plan";
 import type { TelcoState, TelcoRecordData, TelcoAddTags } from "@/types/telco";
 
 const registros = telcoRegistros;
+// Índice id → registro. Con ~1,800 registros, buscar con .find() en cada fila y en
+// cada render pone el app lento; el Map hace la búsqueda instantánea (O(1)).
+const byId = new Map(registros.map((r) => [r[1], r]));
+// Conteo de activos por id, precalculado una sola vez (no en cada render).
+const activeById = new Map(registros.map((r) => [r[1], countActive(r[4], r[5], r[6])]));
 
 type RegistroData = TelcoRecordData;
 type AddTags = TelcoAddTags;
@@ -23,9 +25,6 @@ const ADD_PRODUCTS: { key: keyof AddTags; label: string }[] = [
   { key: "internet", label: "Int" },
   { key: "voice", label: "Voz" },
 ];
-
-const selectClassName =
-  "h-10 w-full rounded-lg border border-muted/30 bg-surface px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
 
 /** "URB BAIROA, A2 CALLE G, CAGUAS" → "Caguas" (el pueblo es siempre el último segmento) */
 function townFromAddress(address: string): string {
@@ -50,7 +49,7 @@ const emptySale: NewCustomerInput = {
   notes: "",
 };
 
-export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialState: TelcoState }) {
+export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
   const router = useRouter();
   // Estado inicial desde Firestore (server). La verdad vive en Firebase, no en el navegador.
   const [data, setData] = useState<Record<string, RegistroData>>(initialState.data);
@@ -105,55 +104,55 @@ export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialSta
     };
   }, [starred, sold, discarded, deleted, addTags, data]);
 
-  const getRegistrosByTab = () => {
-    const active: string[] = [];
-    const parcial: string[] = [];
-    const inactivo: string[] = [];
+  // Búsqueda: cuando hay texto, busca en TODOS los registros (por dirección o ID),
+  // sin importar la pestaña — así siempre encuentras la urb que buscas.
+  const searchTerm = search.trim().toLowerCase();
 
-    registros.forEach((r, i) => {
-      const id = r[1];
-      if (deleted.has(id) || discarded.has(id) || sold.has(id)) return;
-      const count = countActive(r[4], r[5], r[6]);
-      if (count === 3) active.push(id);
-      else if (count > 0) parcial.push(id);
-      else inactivo.push(id);
-    });
-
+  // La lista visible se recalcula solo cuando cambia algo que la afecta (no en cada
+  // render), lo que mantiene el app ágil aún con ~1,800 registros.
+  const filtered = useMemo(() => {
+    if (searchTerm) {
+      return registros
+        .filter(
+          (r) =>
+            !deleted.has(r[1]) &&
+            (r[0].toLowerCase().includes(searchTerm) || r[1].includes(searchTerm))
+        )
+        .map((r) => r[1]);
+    }
+    if (starOnly) {
+      // Solo marcados: muestra TODOS los marcados, sin importar la pestaña
+      return registros.filter((r) => !deleted.has(r[1]) && starred.has(r[1])).map((r) => r[1]);
+    }
     if (selectedTab === "vendidos") {
       return registros.filter((r) => sold.has(r[1]) && !deleted.has(r[1])).map((r) => r[1]);
     }
     if (selectedTab === "descartados") {
       return registros.filter((r) => discarded.has(r[1]) && !deleted.has(r[1])).map((r) => r[1]);
     }
-    if (selectedTab === "completos") return active;
-    if (selectedTab === "inactivos") return inactivo;
-    return parcial;
-  };
+    return registros
+      .filter((r) => {
+        const id = r[1];
+        if (deleted.has(id) || discarded.has(id) || sold.has(id)) return false;
+        const count = activeById.get(id) ?? 0;
+        if (selectedTab === "completos") return count === 3;
+        if (selectedTab === "inactivos") return count === 0;
+        // parciales
+        if (count !== 1 && count !== 2) return false;
+        if (filter === "1" && count !== 1) return false;
+        if (filter === "2" && count !== 2) return false;
+        return true;
+      })
+      .map((r) => r[1]);
+  }, [searchTerm, starOnly, selectedTab, filter, deleted, discarded, sold, starred]);
 
-  // Búsqueda: cuando hay texto, busca en TODOS los registros (por dirección o ID),
-  // sin importar la pestaña — así siempre encuentras la urb que buscas.
-  const searchTerm = search.trim().toLowerCase();
-  const filtered = searchTerm
-    ? registros
-        .filter(
-          (r) =>
-            !deleted.has(r[1]) &&
-            (r[0].toLowerCase().includes(searchTerm) || r[1].includes(searchTerm))
-        )
-        .map((r) => r[1])
-    : starOnly
-      ? // Solo marcados: muestra TODOS los marcados, sin importar la pestaña
-        registros.filter((r) => !deleted.has(r[1]) && starred.has(r[1])).map((r) => r[1])
-      : getRegistrosByTab().filter((id) => {
-          const r = registros.find((x) => x[1] === id)!;
-          const count = countActive(r[4], r[5], r[6]);
-          if (filter === "1" && count !== 1) return false;
-          if (filter === "2" && count !== 2) return false;
-          return true;
-        });
-
+  const maxPages = Math.max(1, Math.ceil(filtered.length / 10));
+  // Si la lista se encoge (al borrar/descartar/buscar) y quedaste en una página que
+  // ya no existe, regresa a una válida — evita ver la tabla "vacía" por error.
+  useEffect(() => {
+    if (page > 0 && page >= maxPages) setPage(maxPages - 1);
+  }, [page, maxPages]);
   const paginated = filtered.slice(page * 10, (page + 1) * 10);
-  const maxPages = Math.ceil(filtered.length / 10);
 
   const handleAddCall = (id: string) => {
     if (!callInput.fecha || !callInput.hora) return;
@@ -201,7 +200,7 @@ export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialSta
 
   /** Abre el formulario de venta con lo que ya sabemos del registro telco */
   const openSale = (id: string) => {
-    const r = registros.find((x) => x[1] === id)!;
+    const r = byId.get(id)!;
     setSaleForm({
       ...emptySale,
       town: townFromAddress(r[0]),
@@ -210,19 +209,6 @@ export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialSta
     });
     setSaleError(null);
     setSaleFor(id);
-  };
-
-  /** Al elegir plan, pre-marca qué productos se agregaron (igual que en Nuevo cliente) */
-  const selectSalePlan = (planId: string) => {
-    const plan = plans.find((p) => p.id === planId);
-    const flags = plan ? planToServiceFlags(plan) : null;
-    setSaleForm((prev) => ({
-      ...prev,
-      assignedPlanId: planId,
-      addedInternet: flags ? flags.internet : prev.addedInternet,
-      addedVideo: flags ? flags.tv : prev.addedVideo,
-      addedVoice: flags ? flags.phone : prev.addedVoice,
-    }));
   };
 
   const submitSale = (e: FormEvent) => {
@@ -295,9 +281,11 @@ export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialSta
   };
 
   // Borra todos los registros que NO marcaste (deja marcados + vendidos). Reversible.
-  const unmarkedCount = registros.filter(
-    (r) => !deleted.has(r[1]) && !starred.has(r[1]) && !sold.has(r[1])
-  ).length;
+  const unmarkedCount = useMemo(
+    () =>
+      registros.filter((r) => !deleted.has(r[1]) && !starred.has(r[1]) && !sold.has(r[1])).length,
+    [deleted, starred, sold]
+  );
   const handleDeleteUnmarked = () => {
     if (unmarkedCount === 0) return;
     if (
@@ -343,19 +331,28 @@ export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialSta
     }));
   };
 
-  const available = (r: (typeof registros)[number]) =>
-    !deleted.has(r[1]) && !discarded.has(r[1]) && !sold.has(r[1]);
-  const counts = {
-    parciales: registros.filter((r) => {
-      const c = countActive(r[4], r[5], r[6]);
-      return available(r) && (c === 1 || c === 2);
-    }).length,
-    completos: registros.filter((r) => available(r) && countActive(r[4], r[5], r[6]) === 3).length,
-    inactivos: registros.filter((r) => available(r) && countActive(r[4], r[5], r[6]) === 0).length,
-    descartados: [...discarded].filter((id) => !deleted.has(id)).length,
-    marcados: [...starred].filter((id) => !deleted.has(id)).length,
-    vendidos: [...sold].filter((id) => !deleted.has(id)).length,
-  };
+  const counts = useMemo(() => {
+    const available = (id: string) => !deleted.has(id) && !discarded.has(id) && !sold.has(id);
+    let parciales = 0,
+      completos = 0,
+      inactivos = 0;
+    for (const r of registros) {
+      const id = r[1];
+      if (!available(id)) continue;
+      const c = activeById.get(id) ?? 0;
+      if (c === 1 || c === 2) parciales++;
+      else if (c === 3) completos++;
+      else inactivos++;
+    }
+    return {
+      parciales,
+      completos,
+      inactivos,
+      descartados: [...discarded].filter((id) => !deleted.has(id)).length,
+      marcados: [...starred].filter((id) => !deleted.has(id)).length,
+      vendidos: [...sold].filter((id) => !deleted.has(id)).length,
+    };
+  }, [deleted, discarded, sold, starred]);
 
   const renderStatus = (status: string) => {
     if (status === "ACTIVE") return <span className="text-success">●</span>;
@@ -564,7 +561,7 @@ export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialSta
             </thead>
             <tbody>
               {paginated.map((id, idx) => {
-                const r = registros.find((x) => x[1] === id)!;
+                const r = byId.get(id)!;
                 const meta = data[id];
                 const rowNum = page * 10 + idx + 1;
                 return (
@@ -872,7 +869,7 @@ export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialSta
         <form onSubmit={submitSale} className="space-y-3">
           {saleFor && (
             <p className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-xs text-muted">
-              {registros.find((r) => r[1] === saleFor)?.[0]}
+              {byId.get(saleFor)?.[0]}
               <span className="ml-1 font-data text-primary">({saleFor})</span>
             </p>
           )}
@@ -888,25 +885,6 @@ export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialSta
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs text-muted">Email</label>
-              <Input
-                type="email"
-                value={saleForm.email}
-                onChange={(e) => setSaleForm({ ...saleForm, email: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-muted">Teléfono</label>
-              <Input
-                value={saleForm.phone}
-                onChange={(e) => setSaleForm({ ...saleForm, phone: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
               <label className="mb-1 block text-xs text-muted">Pueblo</label>
               <Input
                 value={saleForm.town}
@@ -914,58 +892,23 @@ export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialSta
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-muted">Código de crédito</label>
+              <label className="mb-1 block text-xs text-muted">Teléfono</label>
               <Input
-                value={saleForm.creditCode}
-                onChange={(e) =>
-                  setSaleForm({ ...saleForm, creditCode: e.target.value.toUpperCase() })
-                }
-                placeholder="Ej. AB"
-                className="font-data uppercase"
+                type="tel"
+                inputMode="tel"
+                value={saleForm.phone}
+                onChange={(e) => setSaleForm({ ...saleForm, phone: e.target.value })}
               />
             </div>
           </div>
 
           <div>
-            <label className="mb-1 block text-xs text-muted">Plan a asignar</label>
-            <select
-              value={saleForm.assignedPlanId}
-              onChange={(e) => selectSalePlan(e.target.value)}
-              required
-              className={selectClassName}
-            >
-              <option value="" disabled>
-                Selecciona un plan
-              </option>
-              {plans.map((plan) => (
-                <option key={plan.id} value={plan.id}>
-                  {plan.name} — ${plan.promo_price_2025.toFixed(2)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <AddedProductsCheckboxes
-            value={{
-              internet: saleForm.addedInternet,
-              video: saleForm.addedVideo,
-              voice: saleForm.addedVoice,
-            }}
-            onChange={(v) =>
-              setSaleForm((prev) => ({
-                ...prev,
-                addedInternet: v.internet,
-                addedVideo: v.video,
-                addedVoice: v.voice,
-              }))
-            }
-          />
-
-          <div>
-            <label className="mb-1 block text-xs text-muted">Notas</label>
+            <label className="mb-1 block text-xs text-muted">Letra del crédito</label>
             <Input
-              value={saleForm.notes}
-              onChange={(e) => setSaleForm({ ...saleForm, notes: e.target.value })}
+              value={saleForm.creditCode}
+              onChange={(e) => setSaleForm({ ...saleForm, creditCode: e.target.value.toUpperCase() })}
+              placeholder="Ej. AB"
+              className="font-data uppercase"
             />
           </div>
 
@@ -976,7 +919,7 @@ export function TelcoViewer({ plans, initialState }: { plans: Plan[]; initialSta
               Cancelar
             </Button>
             <Button type="submit" disabled={savingSale}>
-              {savingSale ? "Creando..." : "Crear cliente y marcar vendido"}
+              {savingSale ? "Guardando..." : "Marcar vendido"}
             </Button>
           </div>
         </form>
