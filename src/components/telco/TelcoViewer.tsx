@@ -60,12 +60,14 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [addTags, setAddTags] = useState<Record<string, AddTags>>(initialState.addTags);
   const [filter, setFilter] = useState("todos");
-  // Si ya tienes marcados, el app abre mostrando SOLO esos (tu lista de prospectos).
-  // Si no hay ninguno, abre la lista completa para que puedas empezar a marcar.
-  const [starOnly, setStarOnly] = useState(initialState.starred.length > 0);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [selectedTab, setSelectedTab] = useState<"parciales" | "completos" | "inactivos" | "vendidos" | "descartados">("parciales");
+  // Al marcar ⭐ un lead, sale de la lista de trabajo y se va al tab "Marcados"
+  // (tu lista de prospectos), para que no te estorbe mientras revisas el resto.
+  // Si ya tienes marcados, el app abre directo en ese tab.
+  const [selectedTab, setSelectedTab] = useState<
+    "parciales" | "marcados" | "completos" | "inactivos" | "vendidos" | "descartados"
+  >(initialState.starred.length > 0 ? "marcados" : "parciales");
   const [modalOpen, setModalOpen] = useState<{ type: "call" | "note"; id: string } | null>(null);
   const [callInput, setCallInput] = useState({ fecha: "", hora: "", estado: "answered" as "answered" | "missed" });
   const [noteInput, setNoteInput] = useState("");
@@ -120,8 +122,8 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
         )
         .map((r) => r[1]);
     }
-    if (starOnly) {
-      // Solo marcados: muestra TODOS los marcados, sin importar la pestaña
+    if (selectedTab === "marcados") {
+      // Tu lista de prospectos: todos los ⭐ marcados, sin importar cuántos activos.
       return registros.filter((r) => !deleted.has(r[1]) && starred.has(r[1])).map((r) => r[1]);
     }
     if (selectedTab === "vendidos") {
@@ -133,7 +135,8 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
     return registros
       .filter((r) => {
         const id = r[1];
-        if (deleted.has(id) || discarded.has(id) || sold.has(id)) return false;
+        // Los marcados salen de la lista de trabajo (viven en su propio tab).
+        if (deleted.has(id) || discarded.has(id) || sold.has(id) || starred.has(id)) return false;
         const count = activeById.get(id) ?? 0;
         if (selectedTab === "completos") return count === 3;
         if (selectedTab === "inactivos") return count === 0;
@@ -144,7 +147,7 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
         return true;
       })
       .map((r) => r[1]);
-  }, [searchTerm, starOnly, selectedTab, filter, deleted, discarded, sold, starred]);
+  }, [searchTerm, selectedTab, filter, deleted, discarded, sold, starred]);
 
   const maxPages = Math.max(1, Math.ceil(filtered.length / 10));
   // Si la lista se encoge (al borrar/descartar/buscar) y quedaste en una página que
@@ -438,18 +441,17 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
           </p>
         )}
 
-        {!searchTerm && starOnly && (
+        {!searchTerm && selectedTab === "marcados" && (
           <p className="mb-4 text-xs text-muted">
-            Mostrando tus <span className="text-warning">⭐ marcados</span> —{" "}
-            <span className="font-data text-foreground">{filtered.length}</span> registro(s). Apaga
-            el botón <span className="text-warning">“Solo marcados ⭐”</span> para ver la lista
-            completa y marcar nuevos.
+            Tu lista de <span className="text-warning">⭐ prospectos</span> —{" "}
+            <span className="font-data text-foreground">{filtered.length}</span> marcado(s). Al
+            marcar un lead en otra pestaña, aparece aquí y sale de la lista de trabajo.
           </p>
         )}
 
         {!searchTerm && (
         <div className="flex flex-wrap gap-2 mb-6 border-b border-primary/20">
-          {(["parciales", "completos", "inactivos", "vendidos", "descartados"] as const).map((tab) => (
+          {(["parciales", "marcados", "completos", "inactivos", "vendidos", "descartados"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => {
@@ -464,34 +466,22 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
             >
               {tab === "parciales"
                 ? "⚠️ Parciales"
-                : tab === "completos"
-                  ? "✅ Completos"
-                  : tab === "inactivos"
-                    ? "❌ Inactivos"
-                    : tab === "vendidos"
-                      ? "💵 Vendido"
-                      : "🗑️ Descartados"}
+                : tab === "marcados"
+                  ? `⭐ Marcados (${counts.marcados})`
+                  : tab === "completos"
+                    ? "✅ Completos"
+                    : tab === "inactivos"
+                      ? "❌ Inactivos"
+                      : tab === "vendidos"
+                        ? "💵 Vendido"
+                        : "🗑️ Descartados"}
             </button>
           ))}
         </div>
         )}
 
-        {!searchTerm && selectedTab !== "descartados" && selectedTab !== "vendidos" && (
+        {!searchTerm && selectedTab === "parciales" && (
           <div className="mb-4 flex flex-wrap items-center gap-3">
-            <button
-              onClick={() => {
-                setStarOnly((v) => !v);
-                setPage(0);
-              }}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${
-                starOnly
-                  ? "border-warning bg-warning/15 text-warning"
-                  : "border-muted/30 bg-surface text-muted hover:border-warning/60 hover:text-warning"
-              }`}
-            >
-              <Star size={14} className={starOnly ? "fill-warning" : ""} />
-              Solo marcados ⭐
-            </button>
             <select
               value={filter}
               onChange={(e) => {
