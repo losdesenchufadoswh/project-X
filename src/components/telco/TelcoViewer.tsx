@@ -27,6 +27,21 @@ const ADD_PRODUCTS: { key: keyof AddTags; label: string; long: string }[] = [
   { key: "voice", label: "Voz", long: "📞 Voz" },
 ];
 
+const SVC_STATUSES = ["ACTIVE", "DISCO", "NEVER"] as const;
+type SvcStatus = "" | (typeof SVC_STATUSES)[number];
+interface SvcFilter {
+  video: SvcStatus;
+  internet: SvcStatus;
+  voice: SvcStatus;
+}
+const noSvcFilter: SvcFilter = { video: "", internet: "", voice: "" };
+// Índice de columna en TelcoRecord para cada servicio
+const SVC_COLUMNS: { key: keyof SvcFilter; label: string; col: 4 | 5 | 6 }[] = [
+  { key: "video", label: "📺 TV", col: 4 },
+  { key: "internet", label: "🌐 Internet", col: 5 },
+  { key: "voice", label: "📞 Voz", col: 6 },
+];
+
 /** Fecha y hora LOCAL (Puerto Rico), no UTC — si no, una llamada a las 9pm sale con fecha de mañana. */
 function nowStamp(): string {
   const d = new Date();
@@ -91,6 +106,9 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [addTags, setAddTags] = useState<Record<string, AddTags>>(initialState.addTags);
   const [filter, setFilter] = useState("todos");
+  // Pre-filtro de Parciales por estado de cada servicio ("" = cualquiera).
+  // Ej.: video "DISCO" → solo los que tuvieron TV y la cancelaron.
+  const [svcFilter, setSvcFilter] = useState<SvcFilter>(noSvcFilter);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   // Al marcar ⭐ un lead, sale de la lista de trabajo y se va al tab "Marcados"
@@ -186,10 +204,15 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
         if (count !== 1 && count !== 2) return false;
         if (filter === "1" && count !== 1) return false;
         if (filter === "2" && count !== 2) return false;
+        for (const { key, col } of SVC_COLUMNS) {
+          if (svcFilter[key] && r[col] !== svcFilter[key]) return false;
+        }
         return true;
       })
       .map((r) => r[1]);
-  }, [searchTerm, selectedTab, filter, addFilter, addTags, deleted, discarded, sold, starred]);
+  }, [searchTerm, selectedTab, filter, svcFilter, addFilter, addTags, deleted, discarded, sold, starred]);
+
+  const svcFilterOn = SVC_COLUMNS.some(({ key }) => svcFilter[key] !== "");
 
   // Cuántos marcados hay para añadir cada producto (para los chips del sub-filtro)
   const addCounts = useMemo(() => {
@@ -526,6 +549,48 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
               <option value="1">1 ACTIVE</option>
               <option value="2">2 ACTIVE</option>
             </select>
+            {SVC_COLUMNS.map(({ key, label }) => (
+              <label
+                key={key}
+                className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs ${
+                  svcFilter[key] ? "border-primary bg-primary/10 text-primary" : "border-muted/30 text-muted"
+                }`}
+              >
+                {label}
+                <select
+                  value={svcFilter[key]}
+                  onChange={(e) => {
+                    setSvcFilter((prev) => ({ ...prev, [key]: e.target.value as SvcStatus }));
+                    setPage(0);
+                  }}
+                  className="rounded bg-surface px-1 py-1 text-sm text-foreground focus:outline-none"
+                >
+                  <option value="">Cualquiera</option>
+                  {SVC_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+            {svcFilterOn && (
+              <button
+                onClick={() => {
+                  setSvcFilter(noSvcFilter);
+                  setPage(0);
+                }}
+                className="inline-flex items-center gap-1 rounded-lg border border-muted/30 px-2 py-1.5 text-xs text-muted transition hover:border-danger/60 hover:text-danger"
+              >
+                <X size={12} />
+                Quitar filtros
+              </button>
+            )}
+            {svcFilterOn && (
+              <span className="text-xs text-muted">
+                <span className="font-data text-foreground">{filtered.length}</span> resultado(s)
+              </span>
+            )}
           </div>
         )}
 
