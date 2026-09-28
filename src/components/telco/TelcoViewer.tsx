@@ -20,11 +20,42 @@ const activeById = new Map(registros.map((r) => [r[1], countActive(r[4], r[5], r
 
 type RegistroData = TelcoRecordData;
 type AddTags = TelcoAddTags;
-const ADD_PRODUCTS: { key: keyof AddTags; label: string }[] = [
-  { key: "telefono", label: "Tel" },
-  { key: "internet", label: "Int" },
-  { key: "voice", label: "Voz" },
+// La llave "telefono" se queda por compatibilidad con lo ya guardado, pero es TV.
+const ADD_PRODUCTS: { key: keyof AddTags; label: string; long: string }[] = [
+  { key: "telefono", label: "TV", long: "📺 TV" },
+  { key: "internet", label: "Int", long: "🌐 Internet" },
+  { key: "voice", label: "Voz", long: "📞 Voz" },
 ];
+
+/** Fecha y hora LOCAL (Puerto Rico), no UTC — si no, una llamada a las 9pm sale con fecha de mañana. */
+function nowStamp(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const time = d.toLocaleTimeString("es-PR", { hour: "numeric", minute: "2-digit" });
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
+}
+
+/** Las llamadas viejas (del modal que ya no existe) pasan a ser notas, para no perderlas. */
+function callsToNotes(data: Record<string, TelcoRecordData>): Record<string, TelcoRecordData> {
+  const out: Record<string, TelcoRecordData> = {};
+  for (const [id, rec] of Object.entries(data)) {
+    const calls = rec.llamadas ?? [];
+    const notas = rec.notas ?? [];
+    if (calls.length === 0) {
+      out[id] = { llamadas: [], notas };
+      continue;
+    }
+    const fromCalls = calls.map((c) => ({
+      texto: c.estado === "answered" ? "🟢 Contestó" : "🟡 No contestó",
+      fecha: `${c.fecha} ${c.hora}`.trim(),
+    }));
+    out[id] = {
+      llamadas: [],
+      notas: [...fromCalls, ...notas].sort((a, b) => a.fecha.localeCompare(b.fecha)),
+    };
+  }
+  return out;
+}
 
 /** "URB BAIROA, A2 CALLE G, CAGUAS" → "Caguas" (el pueblo es siempre el último segmento) */
 function townFromAddress(address: string): string {
@@ -52,7 +83,7 @@ const emptySale: NewCustomerInput = {
 export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
   const router = useRouter();
   // Estado inicial desde Firestore (server). La verdad vive en Firebase, no en el navegador.
-  const [data, setData] = useState<Record<string, RegistroData>>(initialState.data);
+  const [data, setData] = useState<Record<string, RegistroData>>(() => callsToNotes(initialState.data));
   const [discarded, setDiscarded] = useState<Set<string>>(new Set(initialState.discarded));
   const [deleted, setDeleted] = useState<Set<string>>(new Set(initialState.deleted));
   const [starred, setStarred] = useState<Set<string>>(new Set(initialState.starred));
@@ -68,9 +99,12 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
   const [selectedTab, setSelectedTab] = useState<
     "parciales" | "marcados" | "completos" | "inactivos" | "vendidos" | "descartados"
   >(initialState.starred.length > 0 ? "marcados" : "parciales");
-  const [modalOpen, setModalOpen] = useState<{ type: "call" | "note"; id: string } | null>(null);
-  const [callInput, setCallInput] = useState({ fecha: "", hora: "", estado: "answered" as "answered" | "missed" });
+  // Dentro de Marcados: filtrar por lo que le vas a añadir (TV / Internet / Voz)
+  const [addFilter, setAddFilter] = useState<"todos" | keyof AddTags>("todos");
+  const [noteFor, setNoteFor] = useState<string | null>(null);
   const [noteInput, setNoteInput] = useState("");
+  // Aviso breve "Anotado" junto al teléfono que tocaste
+  const [noted, setNoted] = useState<{ id: string; answered: boolean } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [saleFor, setSaleFor] = useState<string | null>(null);
   const [saleForm, setSaleForm] = useState<NewCustomerInput>(emptySale);
@@ -123,8 +157,16 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
         .map((r) => r[1]);
     }
     if (selectedTab === "marcados") {
-      // Tu lista de prospectos: todos los ⭐ marcados, sin importar cuántos activos.
-      return registros.filter((r) => !deleted.has(r[1]) && starred.has(r[1])).map((r) => r[1]);
+      // Tu lista de prospectos: los ⭐ marcados, opcionalmente solo los que marcaste
+      // para añadir un producto (ej. solo los de TV).
+      return registros
+        .filter(
+          (r) =>
+            !deleted.has(r[1]) &&
+            starred.has(r[1]) &&
+            (addFilter === "todos" || (addTags[r[1]]?.[addFilter] ?? false))
+        )
+        .map((r) => r[1]);
     }
     if (selectedTab === "vendidos") {
       return registros.filter((r) => sold.has(r[1]) && !deleted.has(r[1])).map((r) => r[1]);
@@ -147,7 +189,21 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
         return true;
       })
       .map((r) => r[1]);
-  }, [searchTerm, selectedTab, filter, deleted, discarded, sold, starred]);
+  }, [searchTerm, selectedTab, filter, addFilter, addTags, deleted, discarded, sold, starred]);
+
+  // Cuántos marcados hay para añadir cada producto (para los chips del sub-filtro)
+  const addCounts = useMemo(() => {
+    const c = { todos: 0, telefono: 0, internet: 0, voice: 0 };
+    for (const id of starred) {
+      if (deleted.has(id) || !byId.has(id)) continue;
+      c.todos++;
+      const t = addTags[id];
+      if (t?.telefono) c.telefono++;
+      if (t?.internet) c.internet++;
+      if (t?.voice) c.voice++;
+    }
+    return c;
+  }, [starred, deleted, addTags]);
 
   const maxPages = Math.max(1, Math.ceil(filtered.length / 10));
   // Si la lista se encoge (al borrar/descartar/buscar) y quedaste en una página que
@@ -157,29 +213,26 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
   }, [page, maxPages]);
   const paginated = filtered.slice(page * 10, (page + 1) * 10);
 
-  const handleAddCall = (id: string) => {
-    if (!callInput.fecha || !callInput.hora) return;
+  const pushNote = (id: string, texto: string) => {
     setData((prev) => ({
       ...prev,
       [id]: {
-        ...prev[id],
-        llamadas: [...(prev[id]?.llamadas || []), { ...callInput }],
+        llamadas: [],
+        notas: [...(prev[id]?.notas || []), { texto, fecha: nowStamp() }],
       },
     }));
-    setCallInput({ fecha: "", hora: "", estado: "answered" });
-    setModalOpen(null);
+  };
+
+  /** Teléfono verde = contestó, amarillo = no contestó. Queda anotado con la fecha. */
+  const logCall = (id: string, answered: boolean) => {
+    pushNote(id, answered ? "🟢 Contestó" : "🟡 No contestó");
+    setNoted({ id, answered });
+    setTimeout(() => setNoted((n) => (n?.id === id ? null : n)), 1500);
   };
 
   const handleAddNote = (id: string) => {
     if (!noteInput.trim()) return;
-    const today = new Date().toISOString().split("T")[0];
-    setData((prev) => ({
-      ...prev,
-      [id]: {
-        ...prev[id],
-        notas: [...(prev[id]?.notas || []), { texto: noteInput, fecha: today }],
-      },
-    }));
+    pushNote(id, noteInput.trim());
     setNoteInput("");
   };
 
@@ -318,13 +371,6 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
     setData((prev) => ({
       ...prev,
       [id]: { ...prev[id], notas: (prev[id]?.notas || []).filter((_, i) => i !== index) },
-    }));
-  };
-
-  const handleDeleteCall = (id: string, index: number) => {
-    setData((prev) => ({
-      ...prev,
-      [id]: { ...prev[id], llamadas: (prev[id]?.llamadas || []).filter((_, i) => i !== index) },
     }));
   };
 
@@ -483,6 +529,28 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
           </div>
         )}
 
+        {!searchTerm && selectedTab === "marcados" && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted">Añadir:</span>
+            {([{ key: "todos", long: "Todos" } as const, ...ADD_PRODUCTS]).map(({ key, long }) => (
+              <button
+                key={key}
+                onClick={() => {
+                  setAddFilter(key);
+                  setPage(0);
+                }}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  addFilter === key
+                    ? "border-primary bg-primary text-background"
+                    : "border-primary/30 bg-surface text-muted hover:border-primary/60 hover:text-primary"
+                }`}
+              >
+                {long} <span className="font-data opacity-80">({addCounts[key]})</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {selectedTab === "descartados" && (
           <div className="mb-4 text-xs text-muted">Aquí están los registros descartados. Haz clic para recuperar.</div>
         )}
@@ -530,7 +598,7 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
                 <th className="text-center py-2 px-2">INTERNET</th>
                 <th className="text-center py-2 px-2">VOICE</th>
                 <th className="text-center py-2 px-2">Añadir</th>
-                <th className="text-center py-2 px-2">Llamadas</th>
+                <th className="text-center py-2 px-2">Llamada</th>
                 <th className="text-center py-2 px-2">Notas</th>
                 <th className="text-center py-2 px-2">Acción</th>
               </tr>
@@ -607,17 +675,31 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
                       </div>
                     </td>
                     <td className="py-3 px-2 text-center">
-                      <button
-                        onClick={() => setModalOpen({ type: "call", id })}
-                        className="inline-flex items-center gap-1 text-xs bg-primary/15 hover:bg-primary/25 px-2 py-1 rounded text-primary"
-                      >
-                        <Phone size={12} />
-                        {meta?.llamadas?.length || 0}
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => logCall(id, true)}
+                          title="Contestó (se anota con la fecha)"
+                          className="rounded-full bg-success/15 p-2 text-success transition hover:bg-success/30"
+                        >
+                          <Phone size={15} />
+                        </button>
+                        <button
+                          onClick={() => logCall(id, false)}
+                          title="No contestó (se anota con la fecha)"
+                          className="rounded-full bg-warning/15 p-2 text-warning transition hover:bg-warning/30"
+                        >
+                          <Phone size={15} />
+                        </button>
+                      </div>
+                      {noted?.id === id && (
+                        <span className={`text-[10px] ${noted.answered ? "text-success" : "text-warning"}`}>
+                          ✓ Anotado
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-2 text-center">
                       <button
-                        onClick={() => setModalOpen({ type: "note", id })}
+                        onClick={() => setNoteFor(id)}
                         className="inline-flex items-center gap-1 text-xs bg-primary/15 hover:bg-primary/25 px-2 py-1 rounded text-primary"
                       >
                         <MessageSquare size={12} />
@@ -708,134 +790,53 @@ export function TelcoViewer({ initialState }: { initialState: TelcoState }) {
         </div>
       </div>
 
-      {modalOpen && (
+      {noteFor && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-surface border border-primary/30 rounded-lg p-6 max-w-md w-full">
-            {modalOpen.type === "call" ? (
-              <>
-                <h2 className="font-semibold mb-4 text-primary">Registrar Llamada</h2>
-                {(data[modalOpen.id]?.llamadas?.length ?? 0) > 0 && (
-                  <div className="mb-4 max-h-40 overflow-y-auto space-y-1.5 border-b border-primary/15 pb-3">
-                    {data[modalOpen.id].llamadas.map((c, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between gap-2 text-xs bg-background/50 rounded px-2 py-1.5"
-                      >
-                        <span className="flex items-center gap-2">
-                          <span className={c.estado === "answered" ? "text-success" : "text-warning"}>●</span>
-                          <span className="font-data">{c.fecha} {c.hora}</span>
-                          <span className="text-muted">{c.estado === "answered" ? "Contestó" : "No contestó"}</span>
-                        </span>
-                        <button
-                          onClick={() => handleDeleteCall(modalOpen.id, i)}
-                          className="text-muted hover:text-danger"
-                          title="Borrar llamada"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs text-muted mb-1">Fecha</label>
-                    <input
-                      type="date"
-                      value={callInput.fecha}
-                      onChange={(e) => setCallInput({ ...callInput, fecha: e.target.value })}
-                      className="w-full rounded border border-muted/30 bg-background px-2 py-1.5 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-muted mb-1">Hora</label>
-                    <input
-                      type="time"
-                      value={callInput.hora}
-                      onChange={(e) => setCallInput({ ...callInput, hora: e.target.value })}
-                      className="w-full rounded border border-muted/30 bg-background px-2 py-1.5 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-muted mb-1">Estado</label>
-                    <select
-                      value={callInput.estado}
-                      onChange={(e) =>
-                        setCallInput({
-                          ...callInput,
-                          estado: e.target.value as "answered" | "missed",
-                        })
-                      }
-                      className="w-full rounded border border-muted/30 bg-background px-2 py-1.5 text-sm"
-                    >
-                      <option value="answered">Verde (Contestó)</option>
-                      <option value="missed">Amarillo (No contestó)</option>
-                    </select>
-                  </div>
-                  <div className="flex gap-2 pt-2">
+            <h2 className="font-semibold mb-4 text-primary">Notas</h2>
+            {(data[noteFor]?.notas?.length ?? 0) > 0 ? (
+              <div className="mb-4 max-h-48 overflow-y-auto space-y-2 border-b border-primary/15 pb-3">
+                {data[noteFor].notas.map((n, i) => (
+                  <div key={i} className="flex items-start justify-between gap-2 bg-background/50 rounded px-2 py-2">
+                    <div className="flex-1">
+                      <p className="text-sm whitespace-pre-wrap break-words">{n.texto}</p>
+                      <p className="mt-1 font-data text-[10px] text-muted">{n.fecha}</p>
+                    </div>
                     <button
-                      onClick={() => setModalOpen(null)}
-                      className="flex-1 px-3 py-1.5 rounded border border-muted/30 hover:border-primary/60 text-sm"
+                      onClick={() => handleDeleteNote(noteFor, i)}
+                      className="text-muted hover:text-danger shrink-0"
+                      title="Borrar nota"
                     >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={() => handleAddCall(modalOpen.id)}
-                      className="flex-1 px-3 py-1.5 rounded bg-primary text-foreground hover:bg-primary/80 text-sm"
-                    >
-                      Guardar
+                      <X size={12} />
                     </button>
                   </div>
-                </div>
-              </>
+                ))}
+              </div>
             ) : (
-              <>
-                <h2 className="font-semibold mb-4 text-primary">Notas</h2>
-                {(data[modalOpen.id]?.notas?.length ?? 0) > 0 ? (
-                  <div className="mb-4 max-h-48 overflow-y-auto space-y-2 border-b border-primary/15 pb-3">
-                    {data[modalOpen.id].notas.map((n, i) => (
-                      <div key={i} className="flex items-start justify-between gap-2 bg-background/50 rounded px-2 py-2">
-                        <div className="flex-1">
-                          <p className="text-sm whitespace-pre-wrap break-words">{n.texto}</p>
-                          <p className="mt-1 font-data text-[10px] text-muted">{n.fecha}</p>
-                        </div>
-                        <button
-                          onClick={() => handleDeleteNote(modalOpen.id, i)}
-                          className="text-muted hover:text-danger shrink-0"
-                          title="Borrar nota"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mb-4 text-xs text-muted">Aún no hay notas. Escribe la primera abajo.</p>
-                )}
-                <div className="space-y-3">
-                  <textarea
-                    value={noteInput}
-                    onChange={(e) => setNoteInput(e.target.value)}
-                    placeholder="Escribe tu nota aquí..."
-                    className="w-full rounded border border-muted/30 bg-background px-2 py-2 text-sm min-h-[100px]"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setModalOpen(null)}
-                      className="flex-1 px-3 py-1.5 rounded border border-muted/30 hover:border-primary/60 text-sm"
-                    >
-                      Cerrar
-                    </button>
-                    <button
-                      onClick={() => handleAddNote(modalOpen.id)}
-                      className="flex-1 px-3 py-1.5 rounded bg-primary text-foreground hover:bg-primary/80 text-sm"
-                    >
-                      Agregar
-                    </button>
-                  </div>
-                </div>
-              </>
+              <p className="mb-4 text-xs text-muted">Aún no hay notas. Escribe la primera abajo.</p>
             )}
+            <div className="space-y-3">
+              <textarea
+                value={noteInput}
+                onChange={(e) => setNoteInput(e.target.value)}
+                placeholder="Escribe tu nota aquí..."
+                className="w-full rounded border border-muted/30 bg-background px-2 py-2 text-sm min-h-[100px]"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setNoteFor(null)}
+                  className="flex-1 px-3 py-1.5 rounded border border-muted/30 hover:border-primary/60 text-sm"
+                >
+                  Cerrar
+                </button>
+                <button
+                  onClick={() => handleAddNote(noteFor)}
+                  className="flex-1 px-3 py-1.5 rounded bg-primary text-foreground hover:bg-primary/80 text-sm"
+                >
+                  Agregar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
